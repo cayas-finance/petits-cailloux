@@ -15,6 +15,7 @@ import {
   estAffichable,
   modelePitch,
   nettoyerNomFichier,
+  retirerLiensFichier,
   bornesTrimestre,
   debutPropose,
   finCycle,
@@ -427,10 +428,19 @@ app.get('/fichiers/:id', async (c) => {
 app.delete('/fichiers/:id', async (c) => {
   const db = base(c);
   const f = await db.query.fichiers.findFirst({ where: eq(fichiers.id, c.req.param('id')) });
-  if (!f) return c.body(null, 204);
-  await db.delete(fichiers).where(eq(fichiers.id, f.id));
+  if (!f) return c.json({ erreur: 'Fichier introuvable.' }, 404);
+  // On retire aussi ses liens et images du pitch, et on renvoie le projet à jour.
+  const projet = await db.query.projets.findFirst({ where: eq(projets.id, f.projetId) });
+  const pitch = projet ? retirerLiensFichier(projet.pitch, urlFichier(f.id)) : '';
+  await db.batch([
+    db.delete(fichiers).where(eq(fichiers.id, f.id)),
+    ...(projet && pitch !== projet.pitch
+      ? [db.update(projets).set({ pitch, majLe: maintenant() }).where(eq(projets.id, projet.id))]
+      : []),
+  ]);
   await c.env.FICHIERS.delete(cleFichier(f.projetId, f.id));
-  return c.body(null, 204);
+  const [p] = await projetsComplets(db, [f.projetId]);
+  return c.json(p ?? null);
 });
 
 app.all('*', (c) => c.json({ erreur: 'Route inconnue.' }, 404));

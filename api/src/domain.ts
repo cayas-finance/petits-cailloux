@@ -169,3 +169,11 @@ export function nettoyerNomFichier(nom: string): string {
   const propre = base.replace(/[\u0000-\u001f\u007f"]/g, '').trim();
   return (propre || 'fichier').slice(0, 200);
 }
+
+/** Retire du pitch les liens et images qui pointent vers un fichier joint supprimé. */
+export function retirerLiensFichier(pitch: string, url: string): string {
+  const echappee = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return pitch
+    .replace(new RegExp(`^[ \\t]*!?\\[[^\\]\\n]*\\]\\(${echappee}\\)[ \\t]*\\n?`, 'gm'), '')
+    .replace(new RegExp(`!?\\[[^\\]\\n]*\\]\\(${echappee}\\)`, 'g'), '');
+}

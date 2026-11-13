@@ -162,6 +162,6 @@ export class Api {
     return firstValueFrom(this.http.post<Fichier>(`/api/projets/${projetId}/fichiers`, form));
   }
   supprimerFichier(id: string) {
-    return firstValueFrom(this.http.delete<void>(`/api/fichiers/${id}`));
+    return firstValueFrom(this.http.delete<Projet | null>(`/api/fichiers/${id}`));
   }
 }

@@ -9,7 +9,7 @@ import { ZardSonnerService } from '@/shared/components/sonner';
 import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
 import { Api, Fichier, Projet, ProjetSaisi, STATUTS, STATUTS_AVEC_CYCLE, Statut, Trimestre, messageErreur } from '../core/api';
 import { jourCourt, jourLong, libelleTrimestre } from '../core/dates';
-import { PitchEditeurComponent } from '../pitch/pitch-editeur.component';
+import { PitchEditeurComponent, retirerLien } from '../pitch/pitch-editeur.component';
 import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
 
 const AUCUN = 'aucun';
@@ -142,6 +142,7 @@ const AUCUN = 'aucun';
                 <p class="-mt-2 text-xs text-muted-foreground">Collez ou glissez une image ou un fichier (10 Mo max).</p>
                 <div [class.hidden]="apercu()">
                   <app-pitch-editeur
+                    #editeurPitch
                     [projetId]="p.id"
                     [valeur]="brouillon()"
                     (valeurChange)="brouillon.set($event)"
@@ -242,6 +243,7 @@ export class ProjetPage {
   protected readonly brouillonPret = signal(false);
   private titreModele = '';
   private readonly editeurCreation = viewChild<PitchEditeurComponent>('editeurCreation');
+  private readonly editeurPitch = viewChild<PitchEditeurComponent>('editeurPitch');
 
   protected readonly cycles = computed(() =>
     this.trimestres().flatMap((t) =>
@@ -417,14 +419,21 @@ export class ProjetPage {
   protected retirerFichier(f: Fichier) {
     this.alerte.confirm({
       zTitle: 'Retirer ce fichier ?',
-      zDescription: `« ${f.nom} » sera supprimé. Pensez à retirer son lien du pitch.`,
+      zDescription: `« ${f.nom} » sera supprimé, ainsi que son lien dans le pitch.`,
       zOkText: 'Retirer',
       zCancelText: 'Annuler',
       zOkDestructive: true,
       zOnOk: async () => {
         try {
-          await this.api.supprimerFichier(f.id);
+          const maj = await this.api.supprimerFichier(f.id);
           this.fichiers.update((l) => l.filter((x) => x.id !== f.id));
+          if (maj) this.projet.set(maj);
+          if (this.editionPitch()) {
+            // Le brouillon en cours peut contenir le lien même s'il n'est pas encore enregistré.
+            const texte = retirerLien(this.brouillon(), f.url);
+            this.brouillon.set(texte);
+            this.editeurPitch()?.remplacer(texte);
+          }
           this.toast.success('Fichier retiré');
         } catch (e) {
           this.toast.error(messageErreur(e));

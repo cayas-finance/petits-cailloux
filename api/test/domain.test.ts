@@ -89,3 +89,19 @@ describe('modèle de pitch', () => {
     expect(modelePitch('X', 'a@cayas.fr', '2026-11-13')).not.toContain('Objectif servi');
   });
 });
+
+import { retirerLiensFichier } from '../src/domain';
+
+describe('retrait d’un fichier joint', () => {
+  const url = '/api/fichiers/abc';
+  it('retire l’image seule sur sa ligne, sans laisser de ligne vide', () => {
+    expect(retirerLiensFichier(`Avant\n![schema.png](${url})\nAprès`, url)).toBe('Avant\nAprès');
+  });
+  it('retire un lien au milieu d’une phrase', () => {
+    expect(retirerLiensFichier(`Voir [notes.txt](${url}) ici`, url)).toBe('Voir  ici');
+  });
+  it('ne touche pas aux autres fichiers', () => {
+    const autre = '[b](/api/fichiers/abcd)';
+    expect(retirerLiensFichier(`${autre}\n[a](${url})`, url)).toBe(`${autre}\n`);
+  });
+});

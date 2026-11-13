@@ -150,3 +150,11 @@ export function lienMarkdown(f: Pick<Fichier, 'nom' | 'type' | 'url'>): string {
   const texte = f.nom.replace(/[[\]]/g, '');
   return IMAGES.includes(f.type) ? `![${texte}](${f.url})` : `[${texte}](${f.url})`;
 }
+
+/** Retire d'un texte markdown les liens et images vers une URL (même règle que l'API). */
+export function retirerLien(markdown: string, url: string): string {
+  const echappee = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return markdown
+    .replace(new RegExp(`^[ \\t]*!?\\[[^\\]\\n]*\\]\\(${echappee}\\)[ \\t]*\\n?`, 'gm'), '')
+    .replace(new RegExp(`!?\\[[^\\]\\n]*\\]\\(${echappee}\\)`, 'g'), '');
+}
