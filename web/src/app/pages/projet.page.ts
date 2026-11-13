@@ -134,8 +134,12 @@ const AUCUN = 'aucun';
                       Aperçu
                     </button>
                   </div>
-                  <p class="text-xs text-muted-foreground">Collez ou glissez une image ou un fichier (10 Mo max).</p>
+                  <div class="flex gap-2">
+                    <button z-button zType="outline" (click)="annulerPitch(p)">Annuler</button>
+                    <button z-button [zLoading]="enCoursPitch()" (click)="enregistrerPitch(p)">Enregistrer le pitch</button>
+                  </div>
                 </div>
+                <p class="-mt-2 text-xs text-muted-foreground">Collez ou glissez une image ou un fichier (10 Mo max).</p>
                 <div [class.hidden]="apercu()">
                   <app-pitch-editeur
                     [projetId]="p.id"
@@ -149,20 +153,16 @@ const AUCUN = 'aucun';
                     <app-pitch-rendu [markdown]="brouillon()" />
                   </div>
                 }
-                <div class="flex gap-2">
-                  <button z-button [zLoading]="enCoursPitch()" (click)="enregistrerPitch(p)">Enregistrer le pitch</button>
-                  <button z-button zType="outline" (click)="annulerPitch(p)">Annuler</button>
-                </div>
               } @else {
+                <div class="flex gap-2">
+                  <button z-button zType="outline" (click)="ouvrirPitch(p)">Modifier le pitch</button>
+                  <a z-button zType="ghost" [routerLink]="['/projets', p.id, 'pitch']">Lire le pitch seul</a>
+                </div>
                 @if (p.pitch.trim()) {
                   <app-pitch-rendu [markdown]="p.pitch" />
                 } @else {
                   <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Pas encore de pitch.</p>
                 }
-                <div class="flex gap-2">
-                  <button z-button zType="outline" (click)="ouvrirPitch(p)">Modifier le pitch</button>
-                  <a z-button zType="ghost" [routerLink]="['/projets', p.id, 'pitch']">Lire le pitch seul</a>
-                </div>
               }
 
               @if (fichiers().length) {
