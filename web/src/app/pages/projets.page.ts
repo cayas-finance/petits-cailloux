@@ -52,6 +52,7 @@ import { libelleCycle, typeBadgeStatut } from './projet-libelles';
                 <th z-table-head>Statut</th>
                 <th z-table-head>Cycle</th>
                 <th z-table-head>Objectifs</th>
+                <th z-table-head><span class="sr-only">Pitch</span></th>
               </tr>
             </thead>
             <tbody z-table-body>
@@ -76,6 +77,9 @@ import { libelleCycle, typeBadgeStatut } from './projet-libelles';
                     } @empty {
                       <span class="text-muted-foreground">—</span>
                     }
+                  </td>
+                  <td z-table-cell class="text-right">
+                    <a [routerLink]="['/projets', p.id, 'pitch']" class="text-sm whitespace-nowrap text-primary hover:underline">Lire le pitch</a>
                   </td>
                 </tr>
               }

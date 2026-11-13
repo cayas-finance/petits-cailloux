@@ -41,13 +41,14 @@ Ajouter un composant Zard : `cd web && npx zard-cli@latest add <composant>`. Les
 ## Mettre en ligne (une fois)
 
 1. **Base D1** : `npx wrangler d1 create petits-cailloux`, puis reporter l'identifiant affiché dans `database_id` de `wrangler.jsonc`.
-2. **Migrations** : `npm run db:migrate:remote`.
-3. **Déploiement** : `npm run deploy`. Le Worker est publié sur `petits-cailloux.<compte>.workers.dev` (ou un domaine personnalisé).
-4. **Cloudflare Access** (Zero Trust → Access → Applications) :
+2. **Stockage des fichiers (R2)** : activer R2 sur le compte (offre gratuite jusqu'à 10 Go), puis `npx wrangler r2 bucket create petits-cailloux-fichiers`.
+3. **Migrations** : `npm run db:migrate:remote`.
+4. **Déploiement** : `npm run deploy`. Le Worker est publié sur `petits-cailloux.<compte>.workers.dev` (ou un domaine personnalisé).
+5. **Cloudflare Access** (Zero Trust → Access → Applications) :
    - ajouter Google Workspace comme fournisseur d'identité ;
    - créer une application *Self-hosted* sur le domaine du Worker ;
    - politique *Allow* avec la règle *Emails ending in* `@cayas.fr`.
-5. **Variables du Worker** (Workers → petits-cailloux → Settings → Variables) :
+6. **Variables du Worker** (Workers → petits-cailloux → Settings → Variables) :
    - `ACCESS_EQUIPE` : le domaine d'équipe, par ex. `cayas.cloudflareaccess.com` ;
    - `ACCESS_AUD` : l'*Application Audience (AUD) Tag* de l'application Access.
 

@@ -23,5 +23,12 @@
       "migrations_dir": "api/migrations"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "FICHIERS",
+      // À créer avec `npx wrangler r2 bucket create petits-cailloux-fichiers`
+      "bucket_name": "petits-cailloux-fichiers"
+    }
+  ],
   "observability": { "enabled": true }
 }

@@ -44,7 +44,7 @@ describe('cycles', () => {
   });
 });
 
-import { verifierOwner, verifierProjet } from '../src/domain';
+import { estAffichable, modelePitch, nettoyerNomFichier, verifierOwner, verifierProjet } from '../src/domain';
 
 describe('projets', () => {
   it('exige un cycle pour un projet misé ou livré', () => {
@@ -58,5 +58,50 @@ describe('projets', () => {
     expect(verifierOwner('Marine@Cayas.fr ', 'cayas.fr')).toBeNull();
     expect(verifierOwner('marine@gmail.com', 'cayas.fr')).toMatch(/@cayas.fr/);
     expect(verifierOwner('marine', 'cayas.fr')).toMatch(/adresse/);
+  });
+});
+
+describe('pitch', () => {
+  it('pré-remplit le modèle du guide', () => {
+    const m = modelePitch('Import des relevés', 'thomas@cayas.fr', '2026-11-13');
+    expect(m.startsWith('# Import des relevés\n')).toBe(true);
+    expect(m).toContain('Rédigé par : thomas@cayas.fr · Date : 13/11/2026');
+    for (const r of ['## Problème', '## Solution esquissée', '## Pièges identifiés', '## Hors périmètre', '## Comment on saura que c’est réussi'])
+      expect(m).toContain(r);
+  });
+
+  it('ne sert dans le navigateur que les images et les PDF', () => {
+    expect(estAffichable('image/png')).toBe(true);
+    expect(estAffichable('application/pdf')).toBe(true);
+    expect(estAffichable('image/svg+xml')).toBe(false);
+    expect(estAffichable('text/html')).toBe(false);
+  });
+
+  it('nettoie les noms de fichiers', () => {
+    expect(nettoyerNomFichier('C:\\temp\\maquette "v2".png')).toBe('maquette v2.png');
+    expect(nettoyerNomFichier('../../etc/passwd')).toBe('passwd');
+    expect(nettoyerNomFichier('   ')).toBe('fichier');
+  });
+});
+
+describe('modèle de pitch', () => {
+  it('ne demande pas les objectifs, déjà portés par le projet', () => {
+    expect(modelePitch('X', 'a@cayas.fr', '2026-11-13')).not.toContain('Objectif servi');
+  });
+});
+
+import { retirerLiensFichier } from '../src/domain';
+
+describe('retrait d’un fichier joint', () => {
+  const url = '/api/fichiers/abc';
+  it('retire l’image seule sur sa ligne, sans laisser de ligne vide', () => {
+    expect(retirerLiensFichier(`Avant\n![schema.png](${url})\nAprès`, url)).toBe('Avant\nAprès');
+  });
+  it('retire un lien au milieu d’une phrase', () => {
+    expect(retirerLiensFichier(`Voir [notes.txt](${url}) ici`, url)).toBe('Voir  ici');
+  });
+  it('ne touche pas aux autres fichiers', () => {
+    const autre = '[b](/api/fichiers/abcd)';
+    expect(retirerLiensFichier(`${autre}\n[a](${url})`, url)).toBe(`${autre}\n`);
   });
 });

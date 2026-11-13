@@ -119,3 +119,61 @@ export function verifierOwner(owner: string, domaine: string): string | null {
   if (!o.endsWith('@' + domaine.toLowerCase())) return `L’owner doit avoir une adresse @${domaine}.`;
   return null;
 }
+
+/* ---------- Pitch ---------- */
+
+/** Taille maximale d'un fichier joint au pitch */
+export const TAILLE_MAX_FICHIER = 10 * 1024 * 1024;
+export const TAILLE_MAX_PITCH = 100_000;
+/** Titre du modèle tant que le projet n'a pas de nom */
+export const TITRE_MODELE = '[Titre court du sujet]';
+
+/** Modèle du guide « Rédiger un pitch », pré-rempli avec le nom du projet, l'auteur et la date. */
+export function modelePitch(nom: string, auteur: string, jour: string): string {
+  const [a, m, j] = jour.split('-');
+  return `# ${nom}
+
+Appétit : [1 à 4 semaines]
+Rédigé par : ${auteur} · Date : ${j}/${m}/${a}
+
+## Problème
+[Situation vécue, en 3 à 5 phrases.]
+- Qui est touché :
+- Combien / à quelle fréquence :
+- Source du signal :
+
+## Solution esquissée
+[Éléments clés et parcours principal, à gros traits.]
+
+## Pièges identifiés
+- [Piège] → [décision prise]
+
+## Hors périmètre
+-
+
+## Comment on saura que c’est réussi
+-
+`;
+}
+
+/** Types servis tels quels dans le navigateur ; tout le reste est téléchargé. */
+const TYPES_AFFICHABLES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
+
+export function estAffichable(type: string): boolean {
+  return TYPES_AFFICHABLES.includes(type);
+}
+
+/** Nom de fichier sans chemin ni caractères de contrôle, 200 caractères au plus. */
+export function nettoyerNomFichier(nom: string): string {
+  const base = nom.split(/[\\/]/).pop() ?? '';
+  const propre = base.replace(/[\u0000-\u001f\u007f"]/g, '').trim();
+  return (propre || 'fichier').slice(0, 200);
+}
+
+/** Retire du pitch les liens et images qui pointent vers un fichier joint supprimé. */
+export function retirerLiensFichier(pitch: string, url: string): string {
+  const echappee = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return pitch
+    .replace(new RegExp(`^[ \\t]*!?\\[[^\\]\\n]*\\]\\(${echappee}\\)[ \\t]*\\n?`, 'gm'), '')
+    .replace(new RegExp(`!?\\[[^\\]\\n]*\\]\\(${echappee}\\)`, 'g'), '');
+}

@@ -1,5 +1,7 @@
 export interface Bindings {
   DB: D1Database;
+  /** Images et fichiers joints aux pitchs */
+  FICHIERS: R2Bucket;
   /** Domaine de l'équipe Cloudflare Access, ex. cayas.cloudflareaccess.com */
   ACCESS_EQUIPE?: string;
   /** Identifiant (AUD) de l'application Access */

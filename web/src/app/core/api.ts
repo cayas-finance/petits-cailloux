@@ -51,6 +51,8 @@ export interface Projet {
   cycleId: string | null;
   objectifIds: string[];
   cycle: { id: string; numero: number; trimestreId: string; debut: string; fin: string } | null;
+  /** Pitch en markdown */
+  pitch: string;
   creeLe: string;
   creePar: string;
   majLe: string;
@@ -62,7 +64,22 @@ export interface ProjetSaisi {
   statut: Statut;
   cycleId: string | null;
   objectifIds: string[];
+  /** À la création seulement */
+  pitch?: string;
 }
+
+export interface Fichier {
+  id: string;
+  projetId: string;
+  nom: string;
+  type: string;
+  taille: number;
+  url: string;
+  creeLe: string;
+  creePar: string;
+}
+
+export const TAILLE_MAX_FICHIER = 10 * 1024 * 1024;
 
 export const MAX_OBJECTIFS = 2;
 export const MAX_CYCLES = 3;
@@ -128,5 +145,23 @@ export class Api {
   }
   supprimerProjet(id: string) {
     return firstValueFrom(this.http.delete<void>(`/api/projets/${id}`));
+  }
+
+  modelePitch() {
+    return firstValueFrom(this.http.get<{ pitch: string }>('/api/pitch/modele'));
+  }
+  enregistrerPitch(id: string, pitch: string) {
+    return firstValueFrom(this.http.put<Projet>(`/api/projets/${id}/pitch`, { pitch }));
+  }
+  fichiers(projetId: string) {
+    return firstValueFrom(this.http.get<Fichier[]>(`/api/projets/${projetId}/fichiers`));
+  }
+  envoyerFichier(projetId: string, fichier: File) {
+    const form = new FormData();
+    form.append('fichier', fichier, fichier.name);
+    return firstValueFrom(this.http.post<Fichier>(`/api/projets/${projetId}/fichiers`, form));
+  }
+  supprimerFichier(id: string) {
+    return firstValueFrom(this.http.delete<Projet | null>(`/api/fichiers/${id}`));
   }
 }
