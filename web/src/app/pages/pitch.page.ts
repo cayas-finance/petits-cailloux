@@ -3,7 +3,7 @@ import { Router, RouterLink } from '@angular/router';
 import { ZardButtonComponent } from '@/shared/components/button';
 import { ZardBadgeComponent } from '@/shared/components/badge';
 import { ZardSonnerService } from '@/shared/components/sonner';
-import { Api, Attachment, Project, Quarter, STATUSES, errorMessage } from '../core/api';
+import { Api, Attachment, FORMATS, Project, Quarter, errorMessage, statusLabel } from '../core/api';
 import { shortDay } from '../core/dates';
 import { PitchViewComponent } from '../pitch/pitch-view.component';
 import { cycleLabel, statusBadgeType } from './project-labels';
@@ -16,16 +16,26 @@ import { cycleLabel, statusBadgeType } from './project-labels';
     @if (project(); as p) {
       <div class="mx-auto flex max-w-3xl flex-col gap-6">
         <div class="flex flex-wrap items-center justify-between gap-2 print:hidden">
-          <a [routerLink]="['/projects', p.id]" class="text-sm text-muted-foreground hover:text-foreground">← Fiche du projet</a>
+          @if (from() === 'weekly-review') {
+            <a routerLink="/weekly-review" class="text-sm text-muted-foreground hover:text-foreground">← Point hebdo</a>
+          } @else {
+            <a [routerLink]="['/projects', p.id]" class="text-sm text-muted-foreground hover:text-foreground">← Fiche du projet</a>
+          }
           <div class="flex gap-2">
             <button z-button zType="outline" zSize="sm" (click)="print()">Imprimer</button>
-            <a z-button zSize="sm" [routerLink]="['/projects', p.id]" [queryParams]="{ pitch: 'edit' }">Modifier le pitch</a>
+            <a z-button zSize="sm" [routerLink]="['/projects', p.id]" [queryParams]="{ pitch: 'edit', from: from() }">Modifier le pitch</a>
           </div>
         </div>
 
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-4 text-sm text-muted-foreground">
-          <z-badge [zType]="badge(p.status)">{{ status(p.status) }}</z-badge>
-          <span>Owner : {{ p.owner }}</span>
+          <z-badge [zType]="badge(p.status)">{{ status(p) }}</z-badge>
+          <span>{{ formats[p.format] }}</span>
+          @if (p.owner) {
+            <span>Owner : {{ p.owner }}</span>
+          }
+          @if (p.requester) {
+            <span>Demandeur : {{ p.requester }}</span>
+          }
           @if (p.cycle) {
             <span>{{ cycle(p.cycle) }} · {{ short(p.cycle.startsOn) }} → {{ short(p.cycle.endsOn) }}</span>
           }
@@ -38,10 +48,13 @@ import { cycleLabel, statusBadgeType } from './project-labels';
 
         <article>
           @if (p.pitch.trim()) {
+            @if (p.format === 'short') {
+              <h1 class="mb-3 text-xl font-bold">{{ p.name }}</h1>
+            }
             <app-pitch-view [markdown]="p.pitch" />
           } @else {
             <h1 class="text-xl font-bold">{{ p.name }}</h1>
-            <p class="mt-4 text-sm text-muted-foreground">Pas encore de pitch.</p>
+            <p class="mt-4 text-sm text-muted-foreground">{{ p.format === 'short' ? 'Problème non décrit.' : 'Pas encore de pitch.' }}</p>
           }
         </article>
 
@@ -67,6 +80,8 @@ export class PitchPage {
   private readonly toast = inject(ZardSonnerService);
 
   readonly id = input.required<string>();
+  /** ?from=weekly-review: the back link returns to the weekly review */
+  readonly from = input<string>();
 
   protected readonly project = signal<Project | null>(null);
   protected readonly attachments = signal<Attachment[]>([]);
@@ -83,9 +98,8 @@ export class PitchPage {
   protected readonly badge = statusBadgeType;
   protected readonly cycle = cycleLabel;
   protected readonly short = shortDay;
-  protected status(s: Project['status']) {
-    return STATUSES[s];
-  }
+  protected readonly status = statusLabel;
+  protected readonly formats = FORMATS;
 
   constructor() {
     effect(() => {

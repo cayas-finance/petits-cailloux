@@ -94,9 +94,27 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 /** Statuses for which the project must belong to a cycle */
 export const STATUSES_WITH_CYCLE: readonly ProjectStatus[] = ['bet', 'shipped'];
 
-export function checkProject(p: { status: ProjectStatus; cycleId: string | null }): string | null {
+/** A bet goes through shaping and a long pitch; a short topic is decided at the weekly review. */
+export const PROJECT_FORMATS = ['bet', 'short'] as const;
+export type ProjectFormat = (typeof PROJECT_FORMATS)[number];
+
+/** Statuses a short topic can take: no shaping, no long pitch */
+export const SHORT_STATUSES: readonly ProjectStatus[] = ['received', 'waiting', 'bet', 'shipped', 'dropped'];
+
+export function checkProject(p: {
+  format?: ProjectFormat;
+  status: ProjectStatus;
+  cycleId: string | null;
+  requester?: string;
+}): string | null {
   if (STATUSES_WITH_CYCLE.includes(p.status) && !p.cycleId) {
-    return 'Un projet misé ou livré doit être rattaché à un cycle.';
+    return p.format === 'short'
+      ? 'Un sujet court pris ou livré doit être rattaché à un cycle.'
+      : 'Un projet misé ou livré doit être rattaché à un cycle.';
+  }
+  if (p.format === 'short') {
+    if (!SHORT_STATUSES.includes(p.status)) return 'Un sujet court ne passe pas par le shaping : faites-en un pari.';
+    if (!p.requester?.trim()) return 'Indiquez le demandeur du sujet court.';
   }
   return null;
 }
@@ -142,6 +160,13 @@ Rédigé par : ${author} · Date : ${d}/${m}/${y}
 ## Comment on saura que c’est réussi
 -
 `;
+}
+
+/** Long pitch of a short topic turned into a bet: the guide's template, with the problem already written. */
+export function promotedPitch(name: string, author: string, day: Day, problem: string): string {
+  const template = pitchTemplate(name, author, day);
+  const text = problem.trim();
+  return text ? template.replace('[Situation vécue, en 3 à 5 phrases.]', text) : template;
 }
 
 /** Types served inline in the browser; everything else is downloaded. */

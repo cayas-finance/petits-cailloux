@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, eq, desc, inArray } from 'drizzle-orm';
+import { and, asc, eq, desc, inArray, or } from 'drizzle-orm';
 import { authenticate } from './auth';
 import type { Env } from './env';
 import * as schema from './db/schema';
@@ -22,7 +22,9 @@ import {
   isInline,
   nextCycle,
   numberCycles,
+  PROJECT_FORMATS,
   pitchTemplate,
+  promotedPitch,
   quarterBounds,
   quarterId,
   removeAttachmentLinks,
@@ -254,17 +256,27 @@ async function fullProjects(db: Db, ids?: string[]) {
 
 const projectBody = z.object({
   name: z.string().trim().min(1, 'Le nom est obligatoire.').max(200, 'Le nom est trop long.'),
+  format: z.enum(PROJECT_FORMATS, { error: 'Format inconnu.' }).default('bet'),
   owner: z.string().trim().max(200).optional(),
+  requester: z.string().trim().max(200, 'Le demandeur est trop long.').default(''),
   status: z.enum(PROJECT_STATUSES, { error: 'Statut inconnu.' }).default('received'),
   cycleId: z.string().nullable().default(null),
   goalIds: z.array(z.string()).max(10).default([]),
-  /** On creation only; the guide's template otherwise */
+  /** On creation only; the guide's template otherwise (for a bet) */
   pitch: z.string().max(MAX_PITCH_LENGTH, 'Le pitch est trop long.').optional(),
 });
 
+type ProjectData = Omit<z.infer<typeof projectBody>, 'owner'> & { owner: string | null };
+
+/** A bet has an owner (by default the person who writes it); a short topic only has a requester. */
+function withOwner(body: z.infer<typeof projectBody>, fallback: string | null): ProjectData {
+  const owner = body.format === 'short' ? null : (body.owner || fallback || '').toLowerCase();
+  return { ...body, owner };
+}
+
 /** Checks the project and its references; returns an error message or null */
-async function validateProject(db: Db, c: { env: Env['Bindings'] }, p: z.infer<typeof projectBody> & { owner: string }) {
-  const error = checkProject(p) ?? checkOwner(p.owner, c.env.ALLOWED_DOMAIN || 'cayas.fr');
+async function validateProject(db: Db, c: { env: Env['Bindings'] }, p: ProjectData) {
+  const error = checkProject(p) ?? (p.owner !== null ? checkOwner(p.owner, c.env.ALLOWED_DOMAIN || 'cayas.fr') : null);
   if (error) return error;
   if (p.cycleId && !(await db.query.cycles.findFirst({ where: eq(cycles.id, p.cycleId) }))) return 'Ce cycle n’existe plus.';
   if (p.goalIds.length) {
@@ -283,8 +295,7 @@ app.get('/projects/:id', async (c) => {
 
 app.post('/projects', validate('json', projectBody), async (c) => {
   const db = database(c);
-  const body = c.req.valid('json');
-  const p = { ...body, owner: (body.owner || c.get('email')).toLowerCase() };
+  const p = withOwner(c.req.valid('json'), c.get('email'));
   const error = await validateProject(db, c, p);
   if (error) return c.json({ error }, 400);
   const id = crypto.randomUUID();
@@ -293,10 +304,12 @@ app.post('/projects', validate('json', projectBody), async (c) => {
     db.insert(projects).values({
       id,
       name: p.name,
+      format: p.format,
       owner: p.owner,
+      requester: p.requester,
       status: p.status,
       cycleId: p.cycleId,
-      pitch: p.pitch ?? pitchTemplate(p.name, p.owner, t.slice(0, 10)),
+      pitch: p.pitch ?? (p.format === 'bet' ? pitchTemplate(p.name, p.owner ?? c.get('email'), t.slice(0, 10)) : ''),
       createdAt: t,
       createdBy: c.get('email'),
       updatedAt: t,
@@ -312,14 +325,21 @@ app.patch('/projects/:id', validate('json', projectBody), async (c) => {
   const id = c.req.param('id');
   const existing = await db.query.projects.findFirst({ where: eq(projects.id, id) });
   if (!existing) return c.json({ error: 'Projet introuvable.' }, 404);
-  const body = c.req.valid('json');
-  const p = { ...body, owner: (body.owner || existing.owner).toLowerCase() };
+  const p = withOwner(c.req.valid('json'), existing.owner ?? c.get('email'));
   const error = await validateProject(db, c, p);
   if (error) return c.json({ error }, 400);
   await db.batch([
     db
       .update(projects)
-      .set({ name: p.name, owner: p.owner, status: p.status, cycleId: p.cycleId, updatedAt: now() })
+      .set({
+        name: p.name,
+        format: p.format,
+        owner: p.owner,
+        requester: p.requester,
+        status: p.status,
+        cycleId: p.cycleId,
+        updatedAt: now(),
+      })
       .where(eq(projects.id, id)),
     db.delete(projectGoals).where(eq(projectGoals.projectId, id)),
     ...[...new Set(p.goalIds)].map((goalId) => db.insert(projectGoals).values({ projectId: id, goalId })),
@@ -342,23 +362,60 @@ app.delete('/projects/:id', async (c) => {
   return c.body(null, 204);
 });
 
-/** Changes only the status of a project (e.g. "Marquer livré" at the weekly review). */
+/**
+ * Changes only the status of a project, and its cycle when given: "Marquer livré",
+ * or the decisions on a short topic at the weekly review.
+ */
 app.patch(
   '/projects/:id/status',
-  validate('json', z.object({ status: z.enum(PROJECT_STATUSES, { error: 'Statut inconnu.' }) })),
+  validate(
+    'json',
+    z.object({
+      status: z.enum(PROJECT_STATUSES, { error: 'Statut inconnu.' }),
+      cycleId: z.string().nullable().optional(),
+    }),
+  ),
   async (c) => {
     const db = database(c);
     const id = c.req.param('id');
     const p = await db.query.projects.findFirst({ where: eq(projects.id, id) });
     if (!p) return c.json({ error: 'Projet introuvable.' }, 404);
-    const { status } = c.req.valid('json');
-    const error = checkProject({ status, cycleId: p.cycleId });
+    const { status, cycleId: newCycle } = c.req.valid('json');
+    const cycleId = newCycle === undefined ? p.cycleId : newCycle;
+    const error = checkProject({ ...p, status, cycleId });
     if (error) return c.json({ error }, 400);
-    await db.update(projects).set({ status, updatedAt: now() }).where(eq(projects.id, id));
+    if (cycleId && cycleId !== p.cycleId && !(await db.query.cycles.findFirst({ where: eq(cycles.id, cycleId) }))) {
+      return c.json({ error: 'Ce cycle n’existe plus.' }, 400);
+    }
+    await db.update(projects).set({ status, cycleId, updatedAt: now() }).where(eq(projects.id, id));
     const [updated] = await fullProjects(db, [id]);
     return c.json(updated);
   },
 );
+
+/** Turns a short topic into a bet to shape: the problem goes into the guide's template. */
+app.post('/projects/:id/promote', async (c) => {
+  const db = database(c);
+  const id = c.req.param('id');
+  const p = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+  if (!p) return c.json({ error: 'Projet introuvable.' }, 404);
+  if (p.format !== 'short') return c.json({ error: 'Ce projet est déjà un pari.' }, 400);
+  const email = c.get('email');
+  const t = now();
+  await db
+    .update(projects)
+    .set({
+      format: 'bet',
+      owner: email,
+      status: 'shaping',
+      cycleId: null,
+      pitch: promotedPitch(p.name, email, t.slice(0, 10), p.pitch),
+      updatedAt: t,
+    })
+    .where(eq(projects.id, id));
+  const [updated] = await fullProjects(db, [id]);
+  return c.json(updated);
+});
 
 /* ---------- Pitch and attachments ---------- */
 
@@ -460,35 +517,56 @@ app.delete('/attachments/:id', async (c) => {
 
 /* ---------- Weekly review ---------- */
 
-/** Bets of the current cycle (bet or shipped), with their weekly progress notes. */
+/**
+ * The weekly review of the current cycle: its bets with their progress notes,
+ * the short topics waiting for a decision, and those taken in the cycle.
+ */
 app.get('/weekly-review', async (c) => {
   const db = database(c);
   const today = toDay(new Date());
   const all = numberCycles(await db.select().from(cycles));
   // The weekly review only covers the current cycle.
   const cycle = currentCycle(all, today);
-  if (!cycle) return c.json({ cycle: null, week: null, next: nextCycle(all, today), bets: [] });
+  const empty = { bets: [], shortTopics: { pending: [], current: [] } };
+  if (!cycle) return c.json({ cycle: null, week: null, next: nextCycle(all, today), ...empty });
 
   const ids = (
     await db
       .select({ id: projects.id })
       .from(projects)
-      .where(and(eq(projects.cycleId, cycle.id), inArray(projects.status, ['bet', 'shipped'])))
+      .where(
+        or(
+          and(eq(projects.cycleId, cycle.id), inArray(projects.status, ['bet', 'shipped'])),
+          and(eq(projects.format, 'short'), inArray(projects.status, ['received', 'waiting'])),
+        ),
+      )
   ).map((p) => p.id);
-  const bets = await fullProjects(db, ids);
-  const notes = ids.length
+  const found = await fullProjects(db, ids);
+  const betIds = found.filter((p) => p.format === 'bet').map((p) => p.id);
+  const notes = betIds.length
     ? await db
         .select()
         .from(progressNotes)
-        .where(and(eq(progressNotes.cycleId, cycle.id), inArray(progressNotes.projectId, ids)))
+        .where(and(eq(progressNotes.cycleId, cycle.id), inArray(progressNotes.projectId, betIds)))
     : [];
+  const inCycle = (p: (typeof found)[number]) => p.cycleId === cycle.id && (p.status === 'bet' || p.status === 'shipped');
+  const byStatus = (a: (typeof found)[number], b: (typeof found)[number]) =>
+    a.status === b.status ? a.name.localeCompare(b.name, 'fr') : a.status === 'bet' ? -1 : 1;
   return c.json({
     cycle,
     week: weekOf(cycle, today),
     next: null,
-    bets: bets
-      .sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name, 'fr') : a.status === 'bet' ? -1 : 1))
+    bets: found
+      .filter((p) => p.format === 'bet' && inCycle(p))
+      .sort(byStatus)
       .map((p) => ({ ...p, notes: notes.filter((n) => n.projectId === p.id).sort((a, b) => b.week - a.week) })),
+    shortTopics: {
+      // New topics first, then those put aside, oldest first.
+      pending: found
+        .filter((p) => p.format === 'short' && !inCycle(p))
+        .sort((a, b) => (a.status === b.status ? a.createdAt.localeCompare(b.createdAt) : a.status === 'received' ? -1 : 1)),
+      current: found.filter((p) => p.format === 'short' && inCycle(p)).sort(byStatus),
+    },
   });
 });
 
@@ -504,6 +582,7 @@ app.put(
     const p = await db.query.projects.findFirst({ where: eq(projects.id, id) });
     if (!p) return c.json({ error: 'Projet introuvable.' }, 404);
     if (p.cycleId !== cycleId) return c.json({ error: 'Ce projet n’est pas pris dans ce cycle.' }, 400);
+    if (p.format !== 'bet') return c.json({ error: 'Les notes de suivi sont réservées aux paris.' }, 400);
 
     const { text } = c.req.valid('json');
     const key = and(eq(progressNotes.projectId, id), eq(progressNotes.cycleId, cycleId), eq(progressNotes.week, week));

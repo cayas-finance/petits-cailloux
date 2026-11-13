@@ -4,10 +4,24 @@ import { Router, RouterLink } from '@angular/router';
 import { ZardButtonComponent } from '@/shared/components/button';
 import { ZardCardImports } from '@/shared/components/card';
 import { ZardInputComponent } from '@/shared/components/input';
+import { ZardTextareaComponent } from '@/shared/components/textarea';
 import { ZardSelectImports } from '@/shared/components/select';
 import { ZardSonnerService } from '@/shared/components/sonner';
 import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
-import { Api, Attachment, Project, ProjectInput, Quarter, STATUSES, STATUSES_WITH_CYCLE, Status, errorMessage } from '../core/api';
+import {
+  Api,
+  Attachment,
+  FORMATS,
+  Format,
+  Project,
+  ProjectInput,
+  Quarter,
+  SHORT_STATUSES,
+  STATUSES,
+  STATUSES_WITH_CYCLE,
+  Status,
+  errorMessage,
+} from '../core/api';
 import { longDay, quarterLabel, shortDay } from '../core/dates';
 import { PitchEditorComponent, removeLink } from '../pitch/pitch-editor.component';
 import { PitchViewComponent } from '../pitch/pitch-view.component';
@@ -22,13 +36,18 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
     RouterLink,
     ZardButtonComponent,
     ZardInputComponent,
+    ZardTextareaComponent,
     ...ZardCardImports,
     ...ZardSelectImports,
     PitchEditorComponent,
     PitchViewComponent,
   ],
   template: `
-    <a routerLink="/projects" class="text-sm text-muted-foreground hover:text-foreground">← Tous les projets</a>
+    @if (from() === 'weekly-review') {
+      <a routerLink="/weekly-review" class="text-sm text-muted-foreground hover:text-foreground">← Point hebdo</a>
+    } @else {
+      <a routerLink="/projects" class="text-sm text-muted-foreground hover:text-foreground">← Tous les projets</a>
+    }
 
     @if (ready()) {
       <div class="mt-3 flex flex-col gap-6">
@@ -40,14 +59,25 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
             }
           </div>
           @if (project(); as p) {
-            <button z-button zType="ghost" class="text-destructive" (click)="delete(p)">Supprimer le projet</button>
+            <div class="flex gap-2">
+              @if (p.format === 'short') {
+                <button z-button zType="outline" [zLoading]="saving()" (click)="promote(p)">En faire un pari</button>
+              }
+              <button z-button zType="ghost" class="text-destructive" (click)="delete(p)">Supprimer le projet</button>
+            </div>
           }
         </div>
 
         <z-card>
           <z-card-header>
             <z-card-title>Fiche du projet</z-card-title>
-            <z-card-description>Un projet misé ou livré est rattaché à un cycle.</z-card-description>
+            <z-card-description>
+              @if (format() === 'short') {
+                Un sujet court se décide au point hebdo, sans shaping. Il n’a pas d’owner, juste un demandeur.
+              } @else {
+                Un projet misé ou livré est rattaché à un cycle.
+              }
+            </z-card-description>
           </z-card-header>
           <z-card-content>
             <form class="flex flex-col gap-4" (submit)="$event.preventDefault(); save()">
@@ -57,16 +87,39 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
                   <input z-input name="name" [(ngModel)]="name" required maxlength="200" placeholder="Ex. Import des relevés bancaires" />
                 </label>
                 <label class="flex flex-col gap-1.5 text-sm font-medium">
-                  Owner
-                  <input z-input type="email" name="owner" [(ngModel)]="owner" required placeholder="prenom@cayas.fr" />
+                  Format
+                  @if (project(); as p) {
+                    <span class="py-2 font-normal">{{ formats[p.format] }}</span>
+                  } @else {
+                    <z-select [zValue]="format()" (zValueChange)="changeFormat($any($event))" zPlaceholder="Format">
+                      @for (f of formatList; track f[0]) {
+                        <z-select-item [zValue]="f[0]">{{ f[1] }}</z-select-item>
+                      }
+                    </z-select>
+                  }
                 </label>
                 <label class="flex flex-col gap-1.5 text-sm font-medium">
                   Statut
                   <z-select [(zValue)]="status" zPlaceholder="Statut">
-                    @for (s of statuses; track s[0]) {
+                    @for (s of statusList(); track s[0]) {
                       <z-select-item [zValue]="s[0]">{{ s[1] }}</z-select-item>
                     }
                   </z-select>
+                </label>
+                @if (format() === 'bet') {
+                  <label class="flex flex-col gap-1.5 text-sm font-medium">
+                    Owner
+                    <input z-input type="email" name="owner" [(ngModel)]="owner" required placeholder="prenom@cayas.fr" />
+                  </label>
+                }
+                <label class="flex flex-col gap-1.5 text-sm font-medium" [class.sm:col-span-2]="format() === 'short'">
+                  <span>
+                    Demandeur
+                    @if (format() === 'bet') {
+                      <span class="font-normal text-muted-foreground">(facultatif)</span>
+                    }
+                  </span>
+                  <input z-input name="requester" [(ngModel)]="requester" maxlength="200" placeholder="Ex. Nico, pour le client Dupont" />
                 </label>
                 <label class="flex flex-col gap-1.5 text-sm font-medium sm:col-span-2">
                   Cycle
@@ -109,8 +162,13 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
         @if (project(); as p) {
           <z-card>
             <z-card-header>
-              <z-card-title>Pitch</z-card-title>
-              <z-card-description>Rédigé en markdown, à partir du modèle du guide. Une page maximum.</z-card-description>
+              @if (p.format === 'short') {
+                <z-card-title>Problème</z-card-title>
+                <z-card-description>Quelques lignes en markdown : la situation vécue et ce qu’on attend.</z-card-description>
+              } @else {
+                <z-card-title>Pitch</z-card-title>
+                <z-card-description>Rédigé en markdown, à partir du modèle du guide. Une page maximum.</z-card-description>
+              }
             </z-card-header>
             <z-card-content class="flex flex-col gap-4">
               @if (editingPitch()) {
@@ -137,7 +195,7 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
                   </div>
                   <div class="flex gap-2">
                     <button z-button zType="outline" (click)="cancelPitch(p)">Annuler</button>
-                    <button z-button [zLoading]="savingPitch()" (click)="savePitch(p)">Enregistrer le pitch</button>
+                    <button z-button [zLoading]="savingPitch()" (click)="savePitch(p)">Enregistrer</button>
                   </div>
                 </div>
                 <p class="-mt-2 text-xs text-muted-foreground">Collez ou glissez une image ou un fichier (10 Mo max).</p>
@@ -157,13 +215,15 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
                 }
               } @else {
                 <div class="flex gap-2">
-                  <button z-button zType="outline" (click)="openPitch(p)">Modifier le pitch</button>
-                  <a z-button zType="ghost" [routerLink]="['/projects', p.id, 'pitch']">Lire le pitch seul</a>
+                  <button z-button zType="outline" (click)="openPitch(p)">{{ p.format === 'short' ? 'Modifier le problème' : 'Modifier le pitch' }}</button>
+                  <a z-button zType="ghost" [routerLink]="['/projects', p.id, 'pitch']" [queryParams]="from() ? { from: from() } : {}">{{ p.format === 'short' ? 'Lire le sujet seul' : 'Lire le pitch seul' }}</a>
                 </div>
                 @if (p.pitch.trim()) {
                   <app-pitch-view [markdown]="p.pitch" />
                 } @else {
-                  <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Pas encore de pitch.</p>
+                  <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    {{ p.format === 'short' ? 'Problème non décrit.' : 'Pas encore de pitch.' }}
+                  </p>
                 }
               }
 
@@ -186,19 +246,31 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
             </z-card-content>
           </z-card>
         } @else {
-          <z-card>
-            <z-card-header>
-              <z-card-title>Pitch</z-card-title>
-              <z-card-description>
-                Le modèle du guide, à compléter maintenant ou plus tard. Les images et fichiers pourront être joints une fois le projet créé.
-              </z-card-description>
-            </z-card-header>
-            <z-card-content>
-              @if (draftReady()) {
-                <app-pitch-editor #creationEditor [value]="draft()" (valueChange)="draft.set($event)" />
-              }
-            </z-card-content>
-          </z-card>
+          @if (format() === 'short') {
+            <z-card>
+              <z-card-header>
+                <z-card-title>Problème</z-card-title>
+                <z-card-description>Le pitch court : la situation vécue, en quelques lignes.</z-card-description>
+              </z-card-header>
+              <z-card-content>
+                <textarea z-textarea rows="5" class="w-full" aria-label="Problème" [(ngModel)]="problem" placeholder="Ce qui se passe, pour qui, et ce qu’on attend"></textarea>
+              </z-card-content>
+            </z-card>
+          } @else {
+            <z-card>
+              <z-card-header>
+                <z-card-title>Pitch</z-card-title>
+                <z-card-description>
+                  Le modèle du guide, à compléter maintenant ou plus tard. Les images et fichiers pourront être joints une fois le projet créé.
+                </z-card-description>
+              </z-card-header>
+              <z-card-content>
+                @if (draftReady()) {
+                  <app-pitch-editor #creationEditor [value]="draft()" (valueChange)="draft.set($event)" />
+                }
+              </z-card-content>
+            </z-card>
+          }
           <div class="flex gap-2">
             <button z-button [zLoading]="saving()" (click)="save()">Créer le projet</button>
             <a z-button zType="outline" routerLink="/projects">Annuler</a>
@@ -219,9 +291,12 @@ export class ProjectPage {
   readonly id = input<string>();
   /** ?pitch=edit opens the editor directly */
   readonly pitch = input<string>();
+  /** ?from=weekly-review: the back link returns to the weekly review */
+  readonly from = input<string>();
 
   protected readonly none = NONE;
-  protected readonly statuses = Object.entries(STATUSES) as [Status, string][];
+  protected readonly formats = FORMATS;
+  protected readonly formatList = Object.entries(FORMATS) as [Format, string][];
   protected readonly long = longDay;
 
   protected readonly ready = signal(false);
@@ -230,7 +305,11 @@ export class ProjectPage {
   private readonly quarters = signal<Quarter[]>([]);
 
   protected readonly name = signal('');
+  protected readonly format = signal<Format>('bet');
   protected readonly owner = signal('');
+  protected readonly requester = signal('');
+  /** Problem of a new short topic */
+  protected readonly problem = signal('');
   protected readonly status = signal<string>('received');
   protected readonly cycleId = signal<string>(NONE);
   protected readonly goalIds = signal<string[]>([]);
@@ -254,6 +333,10 @@ export class ProjectPage {
         label: `${quarterLabel(q)} · cycle ${c.number} (${shortDay(c.startsOn)} → ${shortDay(c.endsOn)})`,
       })),
     ),
+  );
+
+  protected readonly statusList = computed(
+    () => Object.entries(this.format() === 'short' ? SHORT_STATUSES : STATUSES) as [Status, string][],
   );
 
   protected readonly cycleRequired = computed(
@@ -318,10 +401,18 @@ export class ProjectPage {
   private fill(p: Project | null, email: string) {
     this.project.set(p);
     this.name.set(p?.name ?? '');
+    this.format.set(p?.format ?? 'bet');
     this.owner.set(p?.owner ?? email);
+    this.requester.set(p?.requester ?? '');
+    this.problem.set('');
     this.status.set(p?.status ?? 'received');
     this.cycleId.set(p?.cycleId ?? NONE);
     this.goalIds.set(p?.goalIds ?? []);
+  }
+
+  protected changeFormat(f: Format) {
+    this.format.set(f);
+    if (f === 'short' && !(this.status() in SHORT_STATUSES)) this.status.set('received');
   }
 
   protected changeCycle(id: string) {
@@ -338,11 +429,13 @@ export class ProjectPage {
   protected async save() {
     const data: ProjectInput = {
       name: this.name().trim(),
-      owner: this.owner().trim(),
+      format: this.format(),
+      ...(this.format() === 'bet' ? { owner: this.owner().trim() } : {}),
+      requester: this.requester().trim(),
       status: this.status() as Status,
       cycleId: this.cycleId() === NONE ? null : this.cycleId(),
       goalIds: this.goalIds(),
-      ...(this.project() ? {} : { pitch: this.draft() }),
+      ...(this.project() ? {} : { pitch: this.format() === 'short' ? this.problem() : this.draft() }),
     };
     this.saving.set(true);
     try {
@@ -381,6 +474,27 @@ export class ProjectPage {
     });
   }
 
+  protected promote(p: Project) {
+    this.alert.confirm({
+      zTitle: 'En faire un pari ?',
+      zDescription: `« ${p.name} » passe en shaping, avec vous comme owner. Le problème est repris dans le modèle du pitch.`,
+      zOkText: 'En faire un pari',
+      zCancelText: 'Annuler',
+      zOnOk: async () => {
+        this.saving.set(true);
+        try {
+          const updated = await this.api.promote(p.id);
+          this.fill(updated, updated.owner ?? '');
+          this.toast.success('C’est maintenant un pari, en shaping');
+        } catch (e) {
+          this.toast.error(errorMessage(e));
+        } finally {
+          this.saving.set(false);
+        }
+      },
+    });
+  }
+
   protected openPitch(p: Project) {
     this.draft.set(p.pitch);
     this.preview.set(false);
@@ -392,8 +506,8 @@ export class ProjectPage {
     try {
       this.project.set(await this.api.savePitch(p.id, this.draft()));
       this.editingPitch.set(false);
-      this.toast.success('Pitch enregistré');
-      if (this.pitch()) await this.router.navigate([], { queryParams: {}, replaceUrl: true });
+      this.toast.success(p.format === 'short' ? 'Problème enregistré' : 'Pitch enregistré');
+      if (this.pitch()) await this.router.navigate([], { queryParams: { pitch: null }, queryParamsHandling: 'merge', replaceUrl: true });
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -404,7 +518,7 @@ export class ProjectPage {
   protected cancelPitch(p: Project) {
     const close = () => {
       this.editingPitch.set(false);
-      if (this.pitch()) this.router.navigate([], { queryParams: {}, replaceUrl: true });
+      if (this.pitch()) this.router.navigate([], { queryParams: { pitch: null }, queryParamsHandling: 'merge', replaceUrl: true });
     };
     if (this.draft() === p.pitch) return close();
     this.alert.confirm({

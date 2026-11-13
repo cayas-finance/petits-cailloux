@@ -44,15 +44,35 @@ export const STATUSES = {
 export type Status = keyof typeof STATUSES;
 export const STATUSES_WITH_CYCLE: Status[] = ['bet', 'shipped'];
 
+/** A bet goes through shaping and a long pitch; a short topic is decided at the weekly review. */
+export const FORMATS = { bet: 'Pari', short: 'Sujet court' } as const;
+export type Format = keyof typeof FORMATS;
+/** Statuses of a short topic, with their labels */
+export const SHORT_STATUSES: Partial<Record<Status, string>> = {
+  received: 'Reçu',
+  waiting: 'Pas maintenant',
+  bet: 'Pris',
+  shipped: 'Livré',
+  dropped: 'Écarté',
+};
+
+/** Label of a project's status, depending on its format */
+export function statusLabel(p: { format: Format; status: Status }): string {
+  return (p.format === 'short' ? SHORT_STATUSES[p.status] : undefined) ?? STATUSES[p.status];
+}
+
 export interface Project {
   id: string;
   name: string;
-  owner: string;
+  format: Format;
+  /** Bets only */
+  owner: string | null;
+  requester: string;
   status: Status;
   cycleId: string | null;
   goalIds: string[];
   cycle: { id: string; number: number; quarterId: string; startsOn: string; endsOn: string } | null;
-  /** Pitch in markdown */
+  /** Markdown: long pitch of a bet, or problem of a short topic */
   pitch: string;
   createdAt: string;
   createdBy: string;
@@ -61,7 +81,9 @@ export interface Project {
 
 export interface ProjectInput {
   name: string;
-  owner: string;
+  format: Format;
+  owner?: string;
+  requester: string;
   status: Status;
   cycleId: string | null;
   goalIds: string[];
@@ -105,6 +127,12 @@ export interface WeeklyReview {
   /** When no cycle is running: the next one to start */
   next: Cycle | null;
   bets: Bet[];
+  shortTopics: {
+    /** Waiting for a decision: new, or put aside */
+    pending: Project[];
+    /** Taken in the current cycle */
+    current: Project[];
+  };
 }
 
 export const MAX_GOALS = 2;
@@ -173,8 +201,13 @@ export class Api {
   deleteProject(id: string) {
     return firstValueFrom(this.http.delete<void>(`/api/projects/${id}`));
   }
-  setStatus(projectId: string, status: Status) {
-    return firstValueFrom(this.http.patch<Project>(`/api/projects/${projectId}/status`, { status }));
+  /** Changes the status, and the cycle when given */
+  setStatus(projectId: string, status: Status, cycleId?: string | null) {
+    return firstValueFrom(this.http.patch<Project>(`/api/projects/${projectId}/status`, { status, cycleId }));
+  }
+  /** Turns a short topic into a bet to shape */
+  promote(projectId: string) {
+    return firstValueFrom(this.http.post<Project>(`/api/projects/${projectId}/promote`, {}));
   }
 
   pitchTemplate() {
