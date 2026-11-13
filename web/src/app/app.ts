@@ -23,7 +23,12 @@ import { Api } from './core/api';
             class="border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground"
             >Trimestres et cycles</a
           >
-          <span class="cursor-not-allowed px-3 py-2 text-sm whitespace-nowrap text-muted-foreground/60" title="Bientôt">Projets</span>
+          <a
+            routerLink="/projets"
+            routerLinkActive="border-primary text-foreground"
+            class="border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground"
+            >Projets</a
+          >
           <span class="cursor-not-allowed px-3 py-2 text-sm whitespace-nowrap text-muted-foreground/60" title="Bientôt">Suivi</span>
         </nav>
       </div>

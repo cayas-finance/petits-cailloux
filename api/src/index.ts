@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, eq, desc } from 'drizzle-orm';
+import { and, asc, eq, desc, inArray } from 'drizzle-orm';
 import { authentifier } from './auth';
 import type { Env } from './env';
 import * as schema from './db/schema';
-import { cycles, objectifs, trimestres } from './db/schema';
+import { STATUTS_PROJET, cycles, objectifs, projetObjectifs, projets, trimestres } from './db/schema';
 import {
   MAX_OBJECTIFS,
   bornesTrimestre,
@@ -15,6 +15,8 @@ import {
   idTrimestre,
   numeroter,
   verifierCycle,
+  verifierOwner,
+  verifierProjet,
 } from './domain';
 
 const app = new Hono<Env>().basePath('/api');
@@ -107,7 +109,13 @@ app.delete('/trimestres/:id', async (c) => {
   const id = c.req.param('id');
   const db = base(c);
   // D1 n'applique pas toujours les cascades : on supprime explicitement, dans un seul lot.
+  const objIds = (await db.select({ id: objectifs.id }).from(objectifs).where(eq(objectifs.trimestreId, id))).map((o) => o.id);
+  const cyIds = (await db.select({ id: cycles.id }).from(cycles).where(eq(cycles.trimestreId, id))).map((x) => x.id);
+  if (cyIds.length && (await db.select({ id: projets.id }).from(projets).where(inArray(projets.cycleId, cyIds))).length) {
+    return c.json({ erreur: 'Des projets sont pris dans les cycles de ce trimestre. Changez-les de cycle avant de le supprimer.' }, 409);
+  }
   await db.batch([
+    db.delete(projetObjectifs).where(inArray(projetObjectifs.objectifId, objIds.length ? objIds : [''])),
     db.delete(objectifs).where(eq(objectifs.trimestreId, id)),
     db.delete(cycles).where(eq(cycles.trimestreId, id)),
     db.delete(trimestres).where(eq(trimestres.id, id)),
@@ -159,7 +167,7 @@ app.delete('/objectifs/:id', async (c) => {
   const db = base(c);
   const o = await db.query.objectifs.findFirst({ where: eq(objectifs.id, c.req.param('id')) });
   if (!o) return c.body(null, 204);
-  await db.delete(objectifs).where(eq(objectifs.id, o.id));
+  await db.batch([db.delete(projetObjectifs).where(eq(projetObjectifs.objectifId, o.id)), db.delete(objectifs).where(eq(objectifs.id, o.id))]);
   return c.json(await chargerTrimestre(c, o.trimestreId));
 });
 
@@ -207,8 +215,103 @@ app.delete('/cycles/:id', async (c) => {
   const db = base(c);
   const cy = await db.query.cycles.findFirst({ where: eq(cycles.id, c.req.param('id')) });
   if (!cy) return c.body(null, 204);
+  const lies = await db.select({ id: projets.id }).from(projets).where(eq(projets.cycleId, cy.id));
+  if (lies.length) {
+    return c.json({ erreur: `Ce cycle porte ${lies.length} projet${lies.length > 1 ? 's' : ''}. ${lies.length > 1 ? "Changez-les" : "Changez-le"} de cycle avant de le supprimer.` }, 409);
+  }
   await db.delete(cycles).where(eq(cycles.id, cy.id));
   return c.json(await chargerTrimestre(c, cy.trimestreId));
+});
+
+/* ---------- Projets ---------- */
+
+type Base = ReturnType<typeof base>;
+
+async function projetsComplets(db: Base, ids?: string[]) {
+  const ps = ids
+    ? await db.select().from(projets).where(inArray(projets.id, ids))
+    : await db.select().from(projets).orderBy(desc(projets.majLe));
+  if (!ps.length) return [];
+  const liens = await db.select().from(projetObjectifs).where(inArray(projetObjectifs.projetId, ps.map((p) => p.id)));
+  const cys = numeroter(await db.select().from(cycles));
+  return ps.map((p) => {
+    const c = cys.find((x) => x.id === p.cycleId);
+    return {
+      ...p,
+      objectifIds: liens.filter((l) => l.projetId === p.id).map((l) => l.objectifId),
+      cycle: c ? { id: c.id, numero: c.numero, trimestreId: c.trimestreId, debut: c.debut, fin: c.fin } : null,
+    };
+  });
+}
+
+const corpsProjet = z.object({
+  nom: z.string().trim().min(1, 'Le nom est obligatoire.').max(200, 'Le nom est trop long.'),
+  owner: z.string().trim().max(200).optional(),
+  statut: z.enum(STATUTS_PROJET, { error: 'Statut inconnu.' }).default('recu'),
+  cycleId: z.string().nullable().default(null),
+  objectifIds: z.array(z.string()).max(10).default([]),
+});
+
+/** Vérifie le projet et ses références ; renvoie un message d'erreur ou null */
+async function controlerProjet(db: Base, c: { env: Env['Bindings'] }, p: z.infer<typeof corpsProjet> & { owner: string }) {
+  const e = verifierProjet(p) ?? verifierOwner(p.owner, c.env.DOMAINE_AUTORISE || 'cayas.fr');
+  if (e) return e;
+  if (p.cycleId && !(await db.query.cycles.findFirst({ where: eq(cycles.id, p.cycleId) }))) return 'Ce cycle n’existe plus.';
+  if (p.objectifIds.length) {
+    const trouves = await db.select({ id: objectifs.id }).from(objectifs).where(inArray(objectifs.id, p.objectifIds));
+    if (trouves.length !== new Set(p.objectifIds).size) return 'Un des objectifs n’existe plus.';
+  }
+  return null;
+}
+
+app.get('/projets', async (c) => c.json(await projetsComplets(base(c))));
+
+app.get('/projets/:id', async (c) => {
+  const [p] = await projetsComplets(base(c), [c.req.param('id')]);
+  return p ? c.json(p) : c.json({ erreur: 'Projet introuvable.' }, 404);
+});
+
+app.post('/projets', valider('json', corpsProjet), async (c) => {
+  const db = base(c);
+  const body = c.req.valid('json');
+  const p = { ...body, owner: (body.owner || c.get('email')).toLowerCase() };
+  const erreur = await controlerProjet(db, c, p);
+  if (erreur) return c.json({ erreur }, 400);
+  const id = crypto.randomUUID();
+  const t = maintenant();
+  const ids = [...new Set(p.objectifIds)];
+  await db.batch([
+    db.insert(projets).values({ id, nom: p.nom, owner: p.owner, statut: p.statut, cycleId: p.cycleId, creeLe: t, creePar: c.get('email'), majLe: t }),
+    ...ids.map((objectifId) => db.insert(projetObjectifs).values({ projetId: id, objectifId })),
+  ]);
+  const [cree] = await projetsComplets(db, [id]);
+  return c.json(cree, 201);
+});
+
+app.patch('/projets/:id', valider('json', corpsProjet), async (c) => {
+  const db = base(c);
+  const id = c.req.param('id');
+  const existant = await db.query.projets.findFirst({ where: eq(projets.id, id) });
+  if (!existant) return c.json({ erreur: 'Projet introuvable.' }, 404);
+  const body = c.req.valid('json');
+  const p = { ...body, owner: (body.owner || existant.owner).toLowerCase() };
+  const erreur = await controlerProjet(db, c, p);
+  if (erreur) return c.json({ erreur }, 400);
+  const ids = [...new Set(p.objectifIds)];
+  await db.batch([
+    db.update(projets).set({ nom: p.nom, owner: p.owner, statut: p.statut, cycleId: p.cycleId, majLe: maintenant() }).where(eq(projets.id, id)),
+    db.delete(projetObjectifs).where(eq(projetObjectifs.projetId, id)),
+    ...ids.map((objectifId) => db.insert(projetObjectifs).values({ projetId: id, objectifId })),
+  ]);
+  const [maj] = await projetsComplets(db, [id]);
+  return c.json(maj);
+});
+
+app.delete('/projets/:id', async (c) => {
+  const db = base(c);
+  const id = c.req.param('id');
+  await db.batch([db.delete(projetObjectifs).where(eq(projetObjectifs.projetId, id)), db.delete(projets).where(eq(projets.id, id))]);
+  return c.body(null, 204);
 });
 
 app.all('*', (c) => c.json({ erreur: 'Route inconnue.' }, 404));

@@ -45,3 +45,38 @@ export const cycles = sqliteTable(
   },
   (t) => [index('cycles_trimestre').on(t.trimestreId)],
 );
+
+/** Statuts d'un projet, dans l'ordre du parcours */
+export const STATUTS_PROJET = ['recu', 'shaping', 'pret', 'attente', 'mise', 'livre', 'ecarte'] as const;
+export type StatutProjet = (typeof STATUTS_PROJET)[number];
+
+export const projets = sqliteTable(
+  'projets',
+  {
+    id: text('id').primaryKey(),
+    nom: text('nom').notNull(),
+    /** Adresse e-mail de la personne qui porte le projet */
+    owner: text('owner').notNull(),
+    statut: text('statut', { enum: STATUTS_PROJET }).notNull().default('recu'),
+    /** Cycle dans lequel le projet est pris ; vide tant qu'il n'est pas misé */
+    cycleId: text('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
+    creeLe: text('cree_le').notNull(),
+    creePar: text('cree_par').notNull(),
+    majLe: text('maj_le').notNull(),
+  },
+  (t) => [index('projets_cycle').on(t.cycleId), index('projets_statut').on(t.statut)],
+);
+
+/** Un projet peut servir 0, 1 ou plusieurs objectifs */
+export const projetObjectifs = sqliteTable(
+  'projet_objectifs',
+  {
+    projetId: text('projet_id')
+      .notNull()
+      .references(() => projets.id, { onDelete: 'cascade' }),
+    objectifId: text('objectif_id')
+      .notNull()
+      .references(() => objectifs.id, { onDelete: 'cascade' }),
+  },
+  (t) => [uniqueIndex('projet_objectifs_pk').on(t.projetId, t.objectifId), index('projet_objectifs_objectif').on(t.objectifId)],
+);

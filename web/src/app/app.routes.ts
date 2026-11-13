@@ -12,5 +12,20 @@ export const routes: Routes = [
     title: 'Trimestre · Petits cailloux',
     loadComponent: () => import('./pages/trimestre.page').then((m) => m.TrimestrePage),
   },
+  {
+    path: 'projets',
+    title: 'Projets · Petits cailloux',
+    loadComponent: () => import('./pages/projets.page').then((m) => m.ProjetsPage),
+  },
+  {
+    path: 'projets/nouveau',
+    title: 'Nouveau projet · Petits cailloux',
+    loadComponent: () => import('./pages/projet.page').then((m) => m.ProjetPage),
+  },
+  {
+    path: 'projets/:id',
+    title: 'Projet · Petits cailloux',
+    loadComponent: () => import('./pages/projet.page').then((m) => m.ProjetPage),
+  },
   { path: '**', redirectTo: 'trimestres' },
 ];
