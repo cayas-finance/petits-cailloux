@@ -6,7 +6,7 @@ import { and, asc, eq, desc, inArray, or } from 'drizzle-orm';
 import { authenticate } from './auth';
 import type { Env } from './env';
 import * as schema from './db/schema';
-import { attachments, cycles, goals, progressNotes, projectGoals, projects, quarters } from './db/schema';
+import { announcements, attachments, cycles, goals, progressNotes, projectGoals, projects, quarters } from './db/schema';
 import {
   MAX_ATTACHMENT_SIZE,
   MAX_GOALS,
@@ -132,6 +132,7 @@ app.delete('/quarters/:id', async (c) => {
     db.delete(projectGoals).where(inArray(projectGoals.goalId, goalIds.length ? goalIds : [''])),
     db.delete(goals).where(eq(goals.quarterId, id)),
     db.delete(progressNotes).where(inArray(progressNotes.cycleId, cycleIds.length ? cycleIds : [''])),
+    db.delete(announcements).where(inArray(announcements.cycleId, cycleIds.length ? cycleIds : [''])),
     db.delete(cycles).where(eq(cycles.quarterId, id)),
     db.delete(quarters).where(eq(quarters.id, id)),
   ]);
@@ -230,7 +231,11 @@ app.delete('/cycles/:id', async (c) => {
       409,
     );
   }
-  await db.batch([db.delete(progressNotes).where(eq(progressNotes.cycleId, cy.id)), db.delete(cycles).where(eq(cycles.id, cy.id))]);
+  await db.batch([
+    db.delete(progressNotes).where(eq(progressNotes.cycleId, cy.id)),
+    db.delete(announcements).where(eq(announcements.cycleId, cy.id)),
+    db.delete(cycles).where(eq(cycles.id, cy.id)),
+  ]);
   return c.json(await loadQuarter(c, cy.quarterId));
 });
 
@@ -527,7 +532,7 @@ app.get('/weekly-review', async (c) => {
   const all = numberCycles(await db.select().from(cycles));
   // The weekly review only covers the current cycle.
   const cycle = currentCycle(all, today);
-  const empty = { bets: [], shortTopics: { pending: [], current: [] } };
+  const empty = { bets: [], shortTopics: { pending: [], current: [] }, announcements: [] };
   if (!cycle) return c.json({ cycle: null, week: null, next: nextCycle(all, today), ...empty });
 
   const ids = (
@@ -552,9 +557,15 @@ app.get('/weekly-review', async (c) => {
   const inCycle = (p: (typeof found)[number]) => p.cycleId === cycle.id && (p.status === 'bet' || p.status === 'shipped');
   const byStatus = (a: (typeof found)[number], b: (typeof found)[number]) =>
     a.status === b.status ? a.name.localeCompare(b.name, 'fr') : a.status === 'bet' ? -1 : 1;
+  const week = weekOf(cycle, today)!;
+  const weekAnnouncements = await db
+    .select()
+    .from(announcements)
+    .where(and(eq(announcements.cycleId, cycle.id), eq(announcements.week, week)))
+    .orderBy(asc(announcements.createdAt));
   return c.json({
     cycle,
-    week: weekOf(cycle, today),
+    week,
     next: null,
     bets: found
       .filter((p) => p.format === 'bet' && inCycle(p))
@@ -567,6 +578,7 @@ app.get('/weekly-review', async (c) => {
         .sort((a, b) => (a.status === b.status ? a.createdAt.localeCompare(b.createdAt) : a.status === 'received' ? -1 : 1)),
       current: found.filter((p) => p.format === 'short' && inCycle(p)).sort(byStatus),
     },
+    announcements: weekAnnouncements,
   });
 });
 
@@ -603,6 +615,50 @@ app.put(
     return c.json(note);
   },
 );
+
+/* ---------- Announcements ---------- */
+
+const announcementBody = z.object({
+  text: z.string().trim().min(1, 'L’info est vide.').max(2000, 'L’info est trop longue.'),
+});
+
+/** Adds an announcement to the current week of the current cycle. */
+app.post('/announcements', validate('json', announcementBody), async (c) => {
+  const db = database(c);
+  const today = toDay(new Date());
+  const cycle = currentCycle(await db.select().from(cycles), today);
+  if (!cycle) return c.json({ error: 'Aucun cycle en cours : pas de point hebdo où diffuser cette info.' }, 409);
+  const t = now();
+  const email = c.get('email');
+  const [a] = await db
+    .insert(announcements)
+    .values({
+      id: crypto.randomUUID(),
+      cycleId: cycle.id,
+      week: weekOf(cycle, today)!,
+      text: c.req.valid('json').text,
+      createdAt: t,
+      createdBy: email,
+      updatedAt: t,
+      updatedBy: email,
+    })
+    .returning();
+  return c.json(a, 201);
+});
+
+app.patch('/announcements/:id', validate('json', announcementBody), async (c) => {
+  const [a] = await database(c)
+    .update(announcements)
+    .set({ text: c.req.valid('json').text, updatedAt: now(), updatedBy: c.get('email') })
+    .where(eq(announcements.id, c.req.param('id')))
+    .returning();
+  return a ? c.json(a) : c.json({ error: 'Info introuvable.' }, 404);
+});
+
+app.delete('/announcements/:id', async (c) => {
+  await database(c).delete(announcements).where(eq(announcements.id, c.req.param('id')));
+  return c.body(null, 204);
+});
 
 app.all('*', (c) => c.json({ error: 'Route inconnue.' }, 404));
 

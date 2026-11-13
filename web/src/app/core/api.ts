@@ -120,6 +120,18 @@ export interface Bet extends Project {
   notes: ProgressNote[];
 }
 
+/** Information to share with the team, given at the weekly review */
+export interface Announcement {
+  id: string;
+  cycleId: string;
+  week: number;
+  text: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
 export interface WeeklyReview {
   cycle: Cycle | null;
   /** Week 1 to 4 when the cycle is running, otherwise null */
@@ -133,6 +145,8 @@ export interface WeeklyReview {
     /** Taken in the current cycle */
     current: Project[];
   };
+  /** Announcements of the current week */
+  announcements: Announcement[];
 }
 
 export const MAX_GOALS = 2;
@@ -230,6 +244,15 @@ export class Api {
 
   weeklyReview() {
     return firstValueFrom(this.http.get<WeeklyReview>('/api/weekly-review'));
+  }
+  addAnnouncement(text: string) {
+    return firstValueFrom(this.http.post<Announcement>('/api/announcements', { text }));
+  }
+  updateAnnouncement(id: string, text: string) {
+    return firstValueFrom(this.http.patch<Announcement>(`/api/announcements/${id}`, { text }));
+  }
+  deleteAnnouncement(id: string) {
+    return firstValueFrom(this.http.delete<void>(`/api/announcements/${id}`));
   }
   saveNote(projectId: string, cycleId: string, week: number, text: string) {
     return firstValueFrom(

@@ -122,3 +122,21 @@ export const progressNotes = sqliteTable(
     index('progress_notes_cycle').on(t.cycleId),
   ],
 );
+
+/** Information to share with the team, given at the weekly review of a week of the cycle */
+export const announcements = sqliteTable(
+  'announcements',
+  {
+    id: text('id').primaryKey(),
+    cycleId: text('cycle_id')
+      .notNull()
+      .references(() => cycles.id, { onDelete: 'cascade' }),
+    /** Week 1 to 4 of the cycle */
+    week: integer('week').notNull(),
+    text: text('text').notNull(),
+    ...created,
+    updatedAt: text('updated_at').notNull(),
+    updatedBy: text('updated_by').notNull(),
+  },
+  (t) => [index('announcements_cycle_week').on(t.cycleId, t.week)],
+);
