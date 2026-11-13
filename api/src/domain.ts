@@ -1,0 +1,91 @@
+// Règles métier de la méthode Petit Poucet, indépendantes de la base.
+// Un trimestre porte 1 ou 2 objectifs et au plus 3 cycles de 4 semaines.
+
+export const MAX_OBJECTIFS = 2;
+export const MAX_CYCLES = 3;
+export const DUREE_CYCLE_JOURS = 28;
+
+export type Jour = string; // AAAA-MM-JJ
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+export function versJour(d: Date): Jour {
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
+export function depuisJour(j: Jour): Date {
+  const [a, m, d] = j.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, d));
+}
+
+export function ajouterJours(j: Jour, n: number): Jour {
+  const d = depuisJour(j);
+  d.setUTCDate(d.getUTCDate() + n);
+  return versJour(d);
+}
+
+export function estJourValide(j: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(j)) return false;
+  return versJour(depuisJour(j)) === j;
+}
+
+export function idTrimestre(annee: number, numero: number): string {
+  return `${annee}-T${numero}`;
+}
+
+/** Premier et dernier jour d'un trimestre civil. */
+export function bornesTrimestre(annee: number, numero: number): { debut: Jour; fin: Jour } {
+  const debut = new Date(Date.UTC(annee, (numero - 1) * 3, 1));
+  const fin = new Date(Date.UTC(annee, numero * 3, 0));
+  return { debut: versJour(debut), fin: versJour(fin) };
+}
+
+/** Lundi qui suit (ou égale) une date : les cycles démarrent un lundi. */
+export function lundiSuivant(j: Jour): Jour {
+  const d = depuisJour(j);
+  const jourSemaine = (d.getUTCDay() + 6) % 7; // 0 = lundi
+  return jourSemaine === 0 ? j : ajouterJours(j, 7 - jourSemaine);
+}
+
+export function finCycle(debut: Jour): Jour {
+  return ajouterJours(debut, DUREE_CYCLE_JOURS - 1);
+}
+
+export interface CycleExistant {
+  id: string;
+  debut: Jour;
+  fin: Jour;
+}
+
+/** Date de début proposée pour le prochain cycle du trimestre. */
+export function debutPropose(trimestre: { debut: Jour }, cycles: CycleExistant[]): Jour {
+  if (!cycles.length) return lundiSuivant(trimestre.debut);
+  const dernier = [...cycles].sort((a, b) => a.fin.localeCompare(b.fin)).at(-1)!;
+  return ajouterJours(dernier.fin, 1);
+}
+
+/**
+ * Vérifie qu'un cycle peut être placé dans le trimestre.
+ * Renvoie un message d'erreur en français, ou null si tout va bien.
+ */
+export function verifierCycle(
+  trimestre: { debut: Jour; fin: Jour },
+  cycles: CycleExistant[],
+  debut: Jour,
+  ignorerId?: string,
+): string | null {
+  if (!estJourValide(debut)) return 'La date de début est invalide.';
+  const autres = cycles.filter((c) => c.id !== ignorerId);
+  if (!ignorerId && autres.length >= MAX_CYCLES) return `Un trimestre compte au plus ${MAX_CYCLES} cycles.`;
+  if (debut < trimestre.debut || debut > trimestre.fin) return 'Le cycle doit commencer pendant le trimestre.';
+  if (depuisJour(debut).getUTCDay() !== 1) return 'Un cycle commence un lundi.';
+  const fin = finCycle(debut);
+  const chevauche = autres.find((c) => debut <= c.fin && fin >= c.debut);
+  if (chevauche) return 'Ce cycle chevauche un cycle existant.';
+  return null;
+}
+
+/** Les cycles sont numérotés dans l'ordre chronologique du trimestre. */
+export function numeroter<T extends { debut: Jour }>(cycles: T[]): (T & { numero: number })[] {
+  return [...cycles].sort((a, b) => a.debut.localeCompare(b.debut)).map((c, i) => ({ ...c, numero: i + 1 }));
+}

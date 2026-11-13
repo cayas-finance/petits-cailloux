@@ -1,0 +1,235 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "6ead3707-b946-45f2-ab7a-1d8e7c892657",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "cycles": {
+      "name": "cycles",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trimestre_id": {
+          "name": "trimestre_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "debut": {
+          "name": "debut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fin": {
+          "name": "fin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cree_par": {
+          "name": "cree_par",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "cycles_trimestre": {
+          "name": "cycles_trimestre",
+          "columns": [
+            "trimestre_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "cycles_trimestre_id_trimestres_id_fk": {
+          "name": "cycles_trimestre_id_trimestres_id_fk",
+          "tableFrom": "cycles",
+          "tableTo": "trimestres",
+          "columnsFrom": [
+            "trimestre_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "objectifs": {
+      "name": "objectifs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trimestre_id": {
+          "name": "trimestre_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "titre": {
+          "name": "titre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cree_par": {
+          "name": "cree_par",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "objectifs_trimestre": {
+          "name": "objectifs_trimestre",
+          "columns": [
+            "trimestre_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "objectifs_trimestre_id_trimestres_id_fk": {
+          "name": "objectifs_trimestre_id_trimestres_id_fk",
+          "tableFrom": "objectifs",
+          "tableTo": "trimestres",
+          "columnsFrom": [
+            "trimestre_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "trimestres": {
+      "name": "trimestres",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "annee": {
+          "name": "annee",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "numero": {
+          "name": "numero",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "debut": {
+          "name": "debut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fin": {
+          "name": "fin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cree_le": {
+          "name": "cree_le",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cree_par": {
+          "name": "cree_par",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "trimestres_annee_numero": {
+          "name": "trimestres_annee_numero",
+          "columns": [
+            "annee",
+            "numero"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
