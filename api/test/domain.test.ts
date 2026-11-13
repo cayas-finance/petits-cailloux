@@ -83,3 +83,9 @@ describe('pitch', () => {
     expect(nettoyerNomFichier('   ')).toBe('fichier');
   });
 });
+
+describe('modèle de pitch', () => {
+  it('ne demande pas les objectifs, déjà portés par le projet', () => {
+    expect(modelePitch('X', 'a@cayas.fr', '2026-11-13')).not.toContain('Objectif servi');
+  });
+});

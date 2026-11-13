@@ -133,7 +133,6 @@ export function modelePitch(nom: string, auteur: string, jour: string): string {
   const [a, m, j] = jour.split('-');
   return `# ${nom}
 
-Objectif servi : [objectif du trimestre]
 Appétit : [1 à 4 semaines]
 Rédigé par : ${auteur} · Date : ${j}/${m}/${a}
 
