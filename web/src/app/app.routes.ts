@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'quarters' },
+  { path: '', pathMatch: 'full', redirectTo: 'weekly-review' },
   {
     path: 'quarters',
     title: 'Trimestres · Petits cailloux',
@@ -37,5 +37,5 @@ export const routes: Routes = [
     title: 'Point hebdo · Petits cailloux',
     loadComponent: () => import('./pages/weekly-review.page').then((m) => m.WeeklyReviewPage),
   },
-  { path: '**', redirectTo: 'quarters' },
+  { path: '**', redirectTo: 'weekly-review' },
 ];
