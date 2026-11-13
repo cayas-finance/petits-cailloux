@@ -19,6 +19,7 @@ import {
   bornesTrimestre,
   cycleParDefaut,
   semaineDe,
+  semaineDeNote,
   versJour,
   debutPropose,
   finCycle,
@@ -458,7 +459,7 @@ app.get('/point-hebdo', async (c) => {
   const demande = c.req.query('cycle');
   const cycle = demande ? tous.find((x) => x.id === demande) : cycleParDefaut(tous, jour);
   if (demande && !cycle) return c.json({ erreur: 'Ce cycle n’existe plus.' }, 404);
-  if (!cycle) return c.json({ cycle: null, semaine: null, paris: [] });
+  if (!cycle) return c.json({ cycle: null, semaine: null, semaineNote: null, paris: [] });
 
   const ps = await db
     .select({ id: projets.id })
@@ -471,6 +472,7 @@ app.get('/point-hebdo', async (c) => {
   return c.json({
     cycle,
     semaine: semaineDe(cycle, jour),
+    semaineNote: semaineDeNote(cycle, jour),
     paris: paris
       .sort((a, b) => (a.statut === b.statut ? a.nom.localeCompare(b.nom, 'fr') : a.statut === 'mise' ? -1 : 1))
       .map((p) => ({ ...p, notes: notes.filter((n) => n.projetId === p.id).sort((a, b) => b.semaine - a.semaine) })),

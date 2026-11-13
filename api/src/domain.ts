@@ -188,6 +188,16 @@ export function semaineDe(cycle: { debut: Jour; fin: Jour }, jour: Jour): number
 }
 
 /**
+ * Semaine où ranger la note de suivi : la semaine en cours, la semaine 1
+ * avant le début du cycle, la semaine 4 après sa fin.
+ */
+export function semaineDeNote(cycle: { debut: Jour; fin: Jour }, jour: Jour): number {
+  if (jour < cycle.debut) return 1;
+  if (jour > cycle.fin) return 4;
+  return semaineDe(cycle, jour) ?? 1;
+}
+
+/**
  * Cycle à afficher par défaut au point hebdo : celui en cours, sinon le
  * prochain à venir, sinon le dernier terminé.
  */

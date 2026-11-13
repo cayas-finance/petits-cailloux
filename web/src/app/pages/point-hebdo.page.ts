@@ -88,7 +88,7 @@ import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
                     <div [id]="'pari-' + p.id" class="flex flex-col gap-4 border-t bg-muted/20 px-4 py-4">
                       @if (semaine(); as s) {
                         <label class="flex flex-col gap-1.5 text-sm font-medium">
-                          Suivi de la semaine {{ s }}
+                          {{ libelleNote() }}
                           <textarea
                             z-textarea
                             rows="3"
@@ -99,8 +99,6 @@ import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
                             placeholder="Ce qui avance, ce qui bloque, ce qui a été coupé"
                           ></textarea>
                         </label>
-                      } @else {
-                        <p class="text-sm text-muted-foreground">Ce cycle n’est pas en cours : les notes sont en lecture seule.</p>
                       }
 
                       <div class="flex flex-wrap gap-2">
@@ -178,7 +176,15 @@ export class PointHebdoPage {
   protected readonly enCours = signal<string | null>(null);
 
   protected readonly paris = computed(() => this.point()?.paris ?? []);
-  protected readonly semaine = computed(() => this.point()?.semaine ?? null);
+  /** Semaine où l'on écrit la note : en cours, 1 avant le cycle, 4 après */
+  protected readonly semaine = computed(() => this.point()?.semaineNote ?? null);
+
+  protected readonly libelleNote = computed(() => {
+    const p = this.point();
+    if (!p?.cycle) return '';
+    if (p.semaine) return `Suivi de la semaine ${p.semaine}`;
+    return p.semaineNote === 1 ? 'Note avant le début du cycle (semaine 1)' : 'Note de fin de cycle (semaine 4)';
+  });
 
   protected readonly cycles = computed(() =>
     this.trimestres()
@@ -211,7 +217,7 @@ export class PointHebdoPage {
     try {
       const p = await this.api.pointHebdo(cycleId);
       this.point.set(p);
-      this.brouillons.set(Object.fromEntries(p.paris.map((x) => [x.id, this.noteDe(x, p.semaine)?.texte ?? ''])));
+      this.brouillons.set(Object.fromEntries(p.paris.map((x) => [x.id, this.noteDe(x, p.semaineNote)?.texte ?? ''])));
       // Un seul pari : on l'ouvre directement.
       this.ouverts.set(new Set(p.paris.length === 1 ? [p.paris[0].id] : []));
     } catch (e) {

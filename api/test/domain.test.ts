@@ -106,7 +106,7 @@ describe('retrait d’un fichier joint', () => {
   });
 });
 
-import { cycleParDefaut, semaineDe } from '../src/domain';
+import { cycleParDefaut, semaineDe, semaineDeNote } from '../src/domain';
 
 describe('point hebdo', () => {
   const c = { debut: '2026-11-02', fin: '2026-11-29' };
@@ -125,5 +125,14 @@ describe('point hebdo', () => {
     expect(cycleParDefaut([b], '2026-10-20')?.id).toBe('b');
     expect(cycleParDefaut([a, b], '2026-12-15')?.id).toBe('b');
     expect(cycleParDefaut([], '2026-12-15')).toBeNull();
+  });
+});
+
+describe('semaine de la note', () => {
+  const c = { debut: '2026-11-23', fin: '2026-12-20' };
+  it('range la note en semaine 1 avant le cycle, 4 après', () => {
+    expect(semaineDeNote(c, '2026-11-13')).toBe(1);
+    expect(semaineDeNote(c, '2026-12-01')).toBe(2);
+    expect(semaineDeNote(c, '2027-01-05')).toBe(4);
   });
 });

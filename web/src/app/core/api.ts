@@ -101,6 +101,8 @@ export interface PointHebdo {
   cycle: Cycle | null;
   /** Semaine 1 à 4 si le cycle est en cours, sinon null */
   semaine: number | null;
+  /** Semaine où ranger la note : 1 avant le cycle, 4 après */
+  semaineNote: number | null;
   paris: Pari[];
 }
 
