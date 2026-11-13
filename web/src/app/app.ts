@@ -7,7 +7,7 @@ import { Api } from './core/api';
   selector: 'app-root',
   imports: [RouterOutlet, RouterLink, RouterLinkActive, ZardSonnerComponent],
   template: `
-    <header class="border-b bg-background">
+    <header class="border-b bg-background print:hidden">
       <div class="mx-auto flex max-w-5xl flex-wrap items-end justify-between gap-3 px-4 pt-5 pb-0">
         <div>
           <p class="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Cayas · méthode Petit Poucet</p>
