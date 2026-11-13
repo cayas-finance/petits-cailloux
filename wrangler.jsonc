@@ -1,6 +1,6 @@
-// Un seul Worker sert l'interface Angular (fichiers statiques) et l'API (/api/*).
-// Aucun secret ici : le dépôt est public. ACCESS_EQUIPE et ACCESS_AUD se règlent
-// dans le tableau de bord Cloudflare (Variables du Worker).
+// A single Worker serves the Angular UI (static assets) and the API (/api/*).
+// No secrets here: the repository is public. ACCESS_TEAM_DOMAIN and ACCESS_AUD
+// are set in the Cloudflare dashboard (Worker variables).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "petits-cailloux",
@@ -12,7 +12,7 @@
     "run_worker_first": ["/api/*"]
   },
   "vars": {
-    "DOMAINE_AUTORISE": "cayas.fr"
+    "ALLOWED_DOMAIN": "cayas.fr"
   },
   "d1_databases": [
     {
@@ -25,9 +25,9 @@
   ],
   "r2_buckets": [
     {
-      "binding": "FICHIERS",
-      // À créer avec `npx wrangler r2 bucket create petits-cailloux-fichiers`
-      "bucket_name": "petits-cailloux-fichiers"
+      "binding": "ATTACHMENTS",
+      // À créer avec `npx wrangler r2 bucket create petits-cailloux-attachments`
+      "bucket_name": "petits-cailloux-attachments"
     }
   ],
   "observability": { "enabled": true }

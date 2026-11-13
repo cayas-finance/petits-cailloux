@@ -1,129 +1,134 @@
 import { describe, expect, it } from 'vitest';
-import { bornesTrimestre, debutPropose, finCycle, lundiSuivant, numeroter, verifierCycle } from '../src/domain';
+import {
+  checkCycle,
+  checkOwner,
+  checkProject,
+  cleanFilename,
+  currentCycle,
+  cycleEnd,
+  isInline,
+  nextCycle,
+  nextMonday,
+  numberCycles,
+  pitchTemplate,
+  quarterBounds,
+  removeAttachmentLinks,
+  suggestedStart,
+  weekOf,
+} from '../src/domain';
 
-describe('trimestres', () => {
-  it('calcule les bornes du T4 2026', () => {
-    expect(bornesTrimestre(2026, 4)).toEqual({ debut: '2026-10-01', fin: '2026-12-31' });
+describe('quarters', () => {
+  it('computes the bounds of Q4 2026', () => {
+    expect(quarterBounds(2026, 4)).toEqual({ startsOn: '2026-10-01', endsOn: '2026-12-31' });
   });
-  it('gère février des années bissextiles', () => {
-    expect(bornesTrimestre(2028, 1)).toEqual({ debut: '2028-01-01', fin: '2028-03-31' });
+  it('handles leap years', () => {
+    expect(quarterBounds(2028, 1)).toEqual({ startsOn: '2028-01-01', endsOn: '2028-03-31' });
   });
 });
 
 describe('cycles', () => {
-  const t4 = bornesTrimestre(2026, 4);
-  it('un cycle dure 4 semaines', () => {
-    expect(finCycle('2026-10-05')).toBe('2026-11-01');
+  const q4 = quarterBounds(2026, 4);
+  it('lasts 4 weeks', () => {
+    expect(cycleEnd('2026-10-05')).toBe('2026-11-01');
   });
-  it('propose le premier lundi du trimestre, puis enchaîne', () => {
-    expect(lundiSuivant('2026-10-01')).toBe('2026-10-05');
-    expect(debutPropose(t4, [])).toBe('2026-10-05');
-    expect(debutPropose(t4, [{ id: 'a', debut: '2026-10-05', fin: '2026-11-01' }])).toBe('2026-11-02');
+  it('suggests the first Monday of the quarter, then chains cycles', () => {
+    expect(nextMonday('2026-10-01')).toBe('2026-10-05');
+    expect(suggestedStart(q4, [])).toBe('2026-10-05');
+    expect(suggestedStart(q4, [{ id: 'a', startsOn: '2026-10-05', endsOn: '2026-11-01' }])).toBe('2026-11-02');
   });
-  it('refuse un cycle hors trimestre, un autre jour que lundi, ou qui chevauche', () => {
-    const existants = [{ id: 'a', debut: '2026-10-05', fin: '2026-11-01' }];
-    expect(verifierCycle(t4, existants, '2027-01-04')).toMatch(/pendant le trimestre/);
-    expect(verifierCycle(t4, existants, '2026-11-03')).toMatch(/lundi/);
-    expect(verifierCycle(t4, existants, '2026-10-26')).toMatch(/chevauche/);
-    expect(verifierCycle(t4, existants, '2026-11-02')).toBeNull();
+  it('rejects a cycle outside the quarter, not on a Monday, or overlapping', () => {
+    const existing = [{ id: 'a', startsOn: '2026-10-05', endsOn: '2026-11-01' }];
+    expect(checkCycle(q4, existing, '2027-01-04')).toMatch(/pendant le trimestre/);
+    expect(checkCycle(q4, existing, '2026-11-03')).toMatch(/lundi/);
+    expect(checkCycle(q4, existing, '2026-10-26')).toMatch(/chevauche/);
+    expect(checkCycle(q4, existing, '2026-11-02')).toBeNull();
   });
-  it('limite à 3 cycles', () => {
-    const trois = [
-      { id: 'a', debut: '2026-10-05', fin: '2026-11-01' },
-      { id: 'b', debut: '2026-11-02', fin: '2026-11-29' },
-      { id: 'c', debut: '2026-11-30', fin: '2026-12-27' },
+  it('allows at most 3 cycles', () => {
+    const three = [
+      { id: 'a', startsOn: '2026-10-05', endsOn: '2026-11-01' },
+      { id: 'b', startsOn: '2026-11-02', endsOn: '2026-11-29' },
+      { id: 'c', startsOn: '2026-11-30', endsOn: '2026-12-27' },
     ];
-    expect(verifierCycle(t4, trois, '2026-12-28')).toMatch(/au plus 3/);
-    expect(verifierCycle(t4, trois, '2026-11-30', 'c')).toBeNull();
+    expect(checkCycle(q4, three, '2026-12-28')).toMatch(/au plus 3/);
+    expect(checkCycle(q4, three, '2026-11-30', 'c')).toBeNull();
   });
-  it('numérote dans l’ordre chronologique', () => {
-    expect(numeroter([{ debut: '2026-11-02' }, { debut: '2026-10-05' }]).map((c) => c.numero + c.debut)).toEqual([
+  it('numbers cycles chronologically', () => {
+    expect(numberCycles([{ startsOn: '2026-11-02' }, { startsOn: '2026-10-05' }]).map((c) => c.number + c.startsOn)).toEqual([
       '12026-10-05',
       '22026-11-02',
     ]);
   });
 });
 
-import { estAffichable, modelePitch, nettoyerNomFichier, verifierOwner, verifierProjet } from '../src/domain';
-
-describe('projets', () => {
-  it('exige un cycle pour un projet misé ou livré', () => {
-    expect(verifierProjet({ statut: 'mise', cycleId: null })).toMatch(/cycle/);
-    expect(verifierProjet({ statut: 'livre', cycleId: null })).toMatch(/cycle/);
-    expect(verifierProjet({ statut: 'mise', cycleId: 'c1' })).toBeNull();
-    expect(verifierProjet({ statut: 'recu', cycleId: null })).toBeNull();
+describe('projects', () => {
+  it('requires a cycle for a bet or shipped project', () => {
+    expect(checkProject({ status: 'bet', cycleId: null })).toMatch(/cycle/);
+    expect(checkProject({ status: 'shipped', cycleId: null })).toMatch(/cycle/);
+    expect(checkProject({ status: 'bet', cycleId: 'c1' })).toBeNull();
+    expect(checkProject({ status: 'received', cycleId: null })).toBeNull();
   });
-  it('n’accepte qu’un owner du domaine', () => {
-    expect(verifierOwner('marine@cayas.fr', 'cayas.fr')).toBeNull();
-    expect(verifierOwner('Marine@Cayas.fr ', 'cayas.fr')).toBeNull();
-    expect(verifierOwner('marine@gmail.com', 'cayas.fr')).toMatch(/@cayas.fr/);
-    expect(verifierOwner('marine', 'cayas.fr')).toMatch(/adresse/);
+  it('only accepts an owner from the allowed domain', () => {
+    expect(checkOwner('marine@cayas.fr', 'cayas.fr')).toBeNull();
+    expect(checkOwner('Marine@Cayas.fr ', 'cayas.fr')).toBeNull();
+    expect(checkOwner('marine@gmail.com', 'cayas.fr')).toMatch(/@cayas.fr/);
+    expect(checkOwner('marine', 'cayas.fr')).toMatch(/adresse/);
   });
 });
 
 describe('pitch', () => {
-  it('pré-remplit le modèle du guide', () => {
-    const m = modelePitch('Import des relevés', 'thomas@cayas.fr', '2026-11-13');
-    expect(m.startsWith('# Import des relevés\n')).toBe(true);
-    expect(m).toContain('Rédigé par : thomas@cayas.fr · Date : 13/11/2026');
-    for (const r of ['## Problème', '## Solution esquissée', '## Pièges identifiés', '## Hors périmètre', '## Comment on saura que c’est réussi'])
-      expect(m).toContain(r);
+  it('fills the guide template', () => {
+    const t = pitchTemplate('Import des relevés', 'thomas@cayas.fr', '2026-11-13');
+    expect(t.startsWith('# Import des relevés\n')).toBe(true);
+    expect(t).toContain('Rédigé par : thomas@cayas.fr · Date : 13/11/2026');
+    for (const s of ['## Problème', '## Solution esquissée', '## Pièges identifiés', '## Hors périmètre', '## Comment on saura que c’est réussi'])
+      expect(t).toContain(s);
   });
-
-  it('ne sert dans le navigateur que les images et les PDF', () => {
-    expect(estAffichable('image/png')).toBe(true);
-    expect(estAffichable('application/pdf')).toBe(true);
-    expect(estAffichable('image/svg+xml')).toBe(false);
-    expect(estAffichable('text/html')).toBe(false);
+  it('does not ask for goals, already set on the project', () => {
+    expect(pitchTemplate('X', 'a@cayas.fr', '2026-11-13')).not.toContain('Objectif servi');
   });
-
-  it('nettoie les noms de fichiers', () => {
-    expect(nettoyerNomFichier('C:\\temp\\maquette "v2".png')).toBe('maquette v2.png');
-    expect(nettoyerNomFichier('../../etc/passwd')).toBe('passwd');
-    expect(nettoyerNomFichier('   ')).toBe('fichier');
+  it('only serves images and PDFs inline', () => {
+    expect(isInline('image/png')).toBe(true);
+    expect(isInline('application/pdf')).toBe(true);
+    expect(isInline('image/svg+xml')).toBe(false);
+    expect(isInline('text/html')).toBe(false);
   });
-});
-
-describe('modèle de pitch', () => {
-  it('ne demande pas les objectifs, déjà portés par le projet', () => {
-    expect(modelePitch('X', 'a@cayas.fr', '2026-11-13')).not.toContain('Objectif servi');
+  it('cleans file names', () => {
+    expect(cleanFilename('C:\\temp\\maquette "v2".png')).toBe('maquette v2.png');
+    expect(cleanFilename('../../etc/passwd')).toBe('passwd');
+    expect(cleanFilename('   ')).toBe('fichier');
   });
 });
 
-import { retirerLiensFichier } from '../src/domain';
-
-describe('retrait d’un fichier joint', () => {
-  const url = '/api/fichiers/abc';
-  it('retire l’image seule sur sa ligne, sans laisser de ligne vide', () => {
-    expect(retirerLiensFichier(`Avant\n![schema.png](${url})\nAprès`, url)).toBe('Avant\nAprès');
+describe('removing an attachment', () => {
+  const url = '/api/attachments/abc';
+  it('removes an image alone on its line, without leaving an empty line', () => {
+    expect(removeAttachmentLinks(`Avant\n![schema.png](${url})\nAprès`, url)).toBe('Avant\nAprès');
   });
-  it('retire un lien au milieu d’une phrase', () => {
-    expect(retirerLiensFichier(`Voir [notes.txt](${url}) ici`, url)).toBe('Voir  ici');
+  it('removes a link in the middle of a sentence', () => {
+    expect(removeAttachmentLinks(`Voir [notes.txt](${url}) ici`, url)).toBe('Voir  ici');
   });
-  it('ne touche pas aux autres fichiers', () => {
-    const autre = '[b](/api/fichiers/abcd)';
-    expect(retirerLiensFichier(`${autre}\n[a](${url})`, url)).toBe(`${autre}\n`);
+  it('leaves other attachments alone', () => {
+    const other = '[b](/api/attachments/abcd)';
+    expect(removeAttachmentLinks(`${other}\n[a](${url})`, url)).toBe(`${other}\n`);
   });
 });
 
-import { cycleEnCours, prochainCycle, semaineDe } from '../src/domain';
-
-describe('point hebdo', () => {
-  const c = { debut: '2026-11-02', fin: '2026-11-29' };
-  it('donne la semaine du cycle', () => {
-    expect(semaineDe(c, '2026-11-02')).toBe(1);
-    expect(semaineDe(c, '2026-11-08')).toBe(1);
-    expect(semaineDe(c, '2026-11-09')).toBe(2);
-    expect(semaineDe(c, '2026-11-29')).toBe(4);
-    expect(semaineDe(c, '2026-11-30')).toBeNull();
-    expect(semaineDe(c, '2026-11-01')).toBeNull();
+describe('weekly review', () => {
+  const c = { startsOn: '2026-11-02', endsOn: '2026-11-29' };
+  it('gives the week of the cycle', () => {
+    expect(weekOf(c, '2026-11-02')).toBe(1);
+    expect(weekOf(c, '2026-11-08')).toBe(1);
+    expect(weekOf(c, '2026-11-09')).toBe(2);
+    expect(weekOf(c, '2026-11-29')).toBe(4);
+    expect(weekOf(c, '2026-11-30')).toBeNull();
+    expect(weekOf(c, '2026-11-01')).toBeNull();
   });
-  it('trouve le cycle en cours et le prochain', () => {
-    const a = { id: 'a', debut: '2026-10-05', fin: '2026-11-01' };
-    const b = { id: 'b', debut: '2026-11-23', fin: '2026-12-20' };
-    expect(cycleEnCours([a, b], '2026-10-20')?.id).toBe('a');
-    expect(cycleEnCours([a, b], '2026-11-13')).toBeNull();
-    expect(prochainCycle([b, a], '2026-11-13')?.id).toBe('b');
-    expect(prochainCycle([a, b], '2026-12-25')).toBeNull();
+  it('finds the current and next cycles', () => {
+    const a = { id: 'a', startsOn: '2026-10-05', endsOn: '2026-11-01' };
+    const b = { id: 'b', startsOn: '2026-11-23', endsOn: '2026-12-20' };
+    expect(currentCycle([a, b], '2026-10-20')?.id).toBe('a');
+    expect(currentCycle([a, b], '2026-11-13')).toBeNull();
+    expect(nextCycle([b, a], '2026-11-13')?.id).toBe('b');
+    expect(nextCycle([a, b], '2026-12-25')).toBeNull();
   });
 });

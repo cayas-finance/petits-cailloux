@@ -1,41 +1,41 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'trimestres' },
+  { path: '', pathMatch: 'full', redirectTo: 'quarters' },
   {
-    path: 'trimestres',
+    path: 'quarters',
     title: 'Trimestres · Petits cailloux',
-    loadComponent: () => import('./pages/trimestres.page').then((m) => m.TrimestresPage),
+    loadComponent: () => import('./pages/quarters.page').then((m) => m.QuartersPage),
   },
   {
-    path: 'trimestres/:id',
+    path: 'quarters/:id',
     title: 'Trimestre · Petits cailloux',
-    loadComponent: () => import('./pages/trimestre.page').then((m) => m.TrimestrePage),
+    loadComponent: () => import('./pages/quarter.page').then((m) => m.QuarterPage),
   },
   {
-    path: 'projets',
+    path: 'projects',
     title: 'Projets · Petits cailloux',
-    loadComponent: () => import('./pages/projets.page').then((m) => m.ProjetsPage),
+    loadComponent: () => import('./pages/projects.page').then((m) => m.ProjectsPage),
   },
   {
-    path: 'projets/nouveau',
+    path: 'projects/new',
     title: 'Nouveau projet · Petits cailloux',
-    loadComponent: () => import('./pages/projet.page').then((m) => m.ProjetPage),
+    loadComponent: () => import('./pages/project.page').then((m) => m.ProjectPage),
   },
   {
-    path: 'projets/:id/pitch',
+    path: 'projects/:id/pitch',
     title: 'Pitch · Petits cailloux',
     loadComponent: () => import('./pages/pitch.page').then((m) => m.PitchPage),
   },
   {
-    path: 'projets/:id',
+    path: 'projects/:id',
     title: 'Projet · Petits cailloux',
-    loadComponent: () => import('./pages/projet.page').then((m) => m.ProjetPage),
+    loadComponent: () => import('./pages/project.page').then((m) => m.ProjectPage),
   },
   {
-    path: 'point-hebdo',
+    path: 'weekly-review',
     title: 'Point hebdo · Petits cailloux',
-    loadComponent: () => import('./pages/point-hebdo.page').then((m) => m.PointHebdoPage),
+    loadComponent: () => import('./pages/weekly-review.page').then((m) => m.WeeklyReviewPage),
   },
-  { path: '**', redirectTo: 'trimestres' },
+  { path: '**', redirectTo: 'quarters' },
 ];

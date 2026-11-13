@@ -1,11 +1,11 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6ead3707-b946-45f2-ab7a-1d8e7c892657",
+  "id": "32de9da9-201b-474c-87f2-82d4d61517c8",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "cycles": {
-      "name": "cycles",
+    "attachments": {
+      "name": "attachments",
       "columns": {
         "id": {
           "name": "id",
@@ -14,36 +14,43 @@
           "notNull": true,
           "autoincrement": false
         },
-        "trimestre_id": {
-          "name": "trimestre_id",
+        "project_id": {
+          "name": "project_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "debut": {
-          "name": "debut",
+        "filename": {
+          "name": "filename",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "fin": {
-          "name": "fin",
+        "content_type": {
+          "name": "content_type",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "cree_le": {
-          "name": "cree_le",
+        "size": {
+          "name": "size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "cree_par": {
-          "name": "cree_par",
+        "created_by": {
+          "name": "created_by",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -51,21 +58,21 @@
         }
       },
       "indexes": {
-        "cycles_trimestre": {
-          "name": "cycles_trimestre",
+        "attachments_project": {
+          "name": "attachments_project",
           "columns": [
-            "trimestre_id"
+            "project_id"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "cycles_trimestre_id_trimestres_id_fk": {
-          "name": "cycles_trimestre_id_trimestres_id_fk",
-          "tableFrom": "cycles",
-          "tableTo": "trimestres",
+        "attachments_project_id_projects_id_fk": {
+          "name": "attachments_project_id_projects_id_fk",
+          "tableFrom": "attachments",
+          "tableTo": "projects",
           "columnsFrom": [
-            "trimestre_id"
+            "project_id"
           ],
           "columnsTo": [
             "id"
@@ -78,8 +85,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "objectifs": {
-      "name": "objectifs",
+    "cycles": {
+      "name": "cycles",
       "columns": {
         "id": {
           "name": "id",
@@ -88,15 +95,89 @@
           "notNull": true,
           "autoincrement": false
         },
-        "trimestre_id": {
-          "name": "trimestre_id",
+        "quarter_id": {
+          "name": "quarter_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "titre": {
-          "name": "titre",
+        "starts_on": {
+          "name": "starts_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ends_on": {
+          "name": "ends_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "cycles_quarter": {
+          "name": "cycles_quarter",
+          "columns": [
+            "quarter_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "cycles_quarter_id_quarters_id_fk": {
+          "name": "cycles_quarter_id_quarters_id_fk",
+          "tableFrom": "cycles",
+          "tableTo": "quarters",
+          "columnsFrom": [
+            "quarter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "goals": {
+      "name": "goals",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "quarter_id": {
+          "name": "quarter_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -110,15 +191,15 @@
           "autoincrement": false,
           "default": "''"
         },
-        "cree_le": {
-          "name": "cree_le",
+        "created_at": {
+          "name": "created_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "cree_par": {
-          "name": "cree_par",
+        "created_by": {
+          "name": "created_by",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -126,21 +207,21 @@
         }
       },
       "indexes": {
-        "objectifs_trimestre": {
-          "name": "objectifs_trimestre",
+        "goals_quarter": {
+          "name": "goals_quarter",
           "columns": [
-            "trimestre_id"
+            "quarter_id"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "objectifs_trimestre_id_trimestres_id_fk": {
-          "name": "objectifs_trimestre_id_trimestres_id_fk",
-          "tableFrom": "objectifs",
-          "tableTo": "trimestres",
+        "goals_quarter_id_quarters_id_fk": {
+          "name": "goals_quarter_id_quarters_id_fk",
+          "tableFrom": "goals",
+          "tableTo": "quarters",
           "columnsFrom": [
-            "trimestre_id"
+            "quarter_id"
           ],
           "columnsTo": [
             "id"
@@ -153,8 +234,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "trimestres": {
-      "name": "trimestres",
+    "progress_notes": {
+      "name": "progress_notes",
       "columns": {
         "id": {
           "name": "id",
@@ -163,43 +244,57 @@
           "notNull": true,
           "autoincrement": false
         },
-        "annee": {
-          "name": "annee",
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cycle_id": {
+          "name": "cycle_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "week": {
+          "name": "week",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "numero": {
-          "name": "numero",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "debut": {
-          "name": "debut",
+        "text": {
+          "name": "text",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "fin": {
-          "name": "fin",
+        "created_at": {
+          "name": "created_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "cree_le": {
-          "name": "cree_le",
+        "created_by": {
+          "name": "created_by",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "cree_par": {
-          "name": "cree_par",
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_by": {
+          "name": "updated_by",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -207,11 +302,285 @@
         }
       },
       "indexes": {
-        "trimestres_annee_numero": {
-          "name": "trimestres_annee_numero",
+        "progress_notes_week": {
+          "name": "progress_notes_week",
           "columns": [
-            "annee",
-            "numero"
+            "project_id",
+            "cycle_id",
+            "week"
+          ],
+          "isUnique": true
+        },
+        "progress_notes_cycle": {
+          "name": "progress_notes_cycle",
+          "columns": [
+            "cycle_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "progress_notes_project_id_projects_id_fk": {
+          "name": "progress_notes_project_id_projects_id_fk",
+          "tableFrom": "progress_notes",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "progress_notes_cycle_id_cycles_id_fk": {
+          "name": "progress_notes_cycle_id_cycles_id_fk",
+          "tableFrom": "progress_notes",
+          "tableTo": "cycles",
+          "columnsFrom": [
+            "cycle_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "project_goals": {
+      "name": "project_goals",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "goal_id": {
+          "name": "goal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "project_goals_pk": {
+          "name": "project_goals_pk",
+          "columns": [
+            "project_id",
+            "goal_id"
+          ],
+          "isUnique": true
+        },
+        "project_goals_goal": {
+          "name": "project_goals_goal",
+          "columns": [
+            "goal_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_goals_project_id_projects_id_fk": {
+          "name": "project_goals_project_id_projects_id_fk",
+          "tableFrom": "project_goals",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_goals_goal_id_goals_id_fk": {
+          "name": "project_goals_goal_id_goals_id_fk",
+          "tableFrom": "project_goals",
+          "tableTo": "goals",
+          "columnsFrom": [
+            "goal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "projects": {
+      "name": "projects",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'received'"
+        },
+        "cycle_id": {
+          "name": "cycle_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pitch": {
+          "name": "pitch",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "projects_cycle": {
+          "name": "projects_cycle",
+          "columns": [
+            "cycle_id"
+          ],
+          "isUnique": false
+        },
+        "projects_status": {
+          "name": "projects_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "projects_cycle_id_cycles_id_fk": {
+          "name": "projects_cycle_id_cycles_id_fk",
+          "tableFrom": "projects",
+          "tableTo": "cycles",
+          "columnsFrom": [
+            "cycle_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "quarters": {
+      "name": "quarters",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "year": {
+          "name": "year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "number": {
+          "name": "number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "starts_on": {
+          "name": "starts_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ends_on": {
+          "name": "ends_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "quarters_year_number": {
+          "name": "quarters_year_number",
+          "columns": [
+            "year",
+            "number"
           ],
           "isUnique": true
         }

@@ -1,140 +1,128 @@
-// Règles métier de la méthode Petit Poucet, indépendantes de la base.
-// Un trimestre porte 1 ou 2 objectifs et au plus 3 cycles de 4 semaines.
+// Business rules of the Petit Poucet method, independent from the database.
+// A quarter has 1 or 2 goals and at most 3 cycles of 4 weeks.
+// Error messages are user-facing, hence in French.
 
-export const MAX_OBJECTIFS = 2;
+export const MAX_GOALS = 2;
 export const MAX_CYCLES = 3;
-export const DUREE_CYCLE_JOURS = 28;
+export const CYCLE_LENGTH_DAYS = 28;
 
-export type Jour = string; // AAAA-MM-JJ
+export type Day = string; // YYYY-MM-DD
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export function versJour(d: Date): Jour {
+export function toDay(d: Date): Day {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
-export function depuisJour(j: Jour): Date {
-  const [a, m, d] = j.split('-').map(Number);
-  return new Date(Date.UTC(a, m - 1, d));
+export function fromDay(day: Day): Date {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
 }
 
-export function ajouterJours(j: Jour, n: number): Jour {
-  const d = depuisJour(j);
+export function addDays(day: Day, n: number): Day {
+  const d = fromDay(day);
   d.setUTCDate(d.getUTCDate() + n);
-  return versJour(d);
+  return toDay(d);
 }
 
-export function estJourValide(j: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(j)) return false;
-  return versJour(depuisJour(j)) === j;
+export function isValidDay(day: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  return toDay(fromDay(day)) === day;
 }
 
-export function idTrimestre(annee: number, numero: number): string {
-  return `${annee}-T${numero}`;
+export function quarterId(year: number, number: number): string {
+  return `${year}-Q${number}`;
 }
 
-/** Premier et dernier jour d'un trimestre civil. */
-export function bornesTrimestre(annee: number, numero: number): { debut: Jour; fin: Jour } {
-  const debut = new Date(Date.UTC(annee, (numero - 1) * 3, 1));
-  const fin = new Date(Date.UTC(annee, numero * 3, 0));
-  return { debut: versJour(debut), fin: versJour(fin) };
+/** First and last day of a calendar quarter. */
+export function quarterBounds(year: number, number: number): { startsOn: Day; endsOn: Day } {
+  const start = new Date(Date.UTC(year, (number - 1) * 3, 1));
+  const end = new Date(Date.UTC(year, number * 3, 0));
+  return { startsOn: toDay(start), endsOn: toDay(end) };
 }
 
-/** Lundi qui suit (ou égale) une date : les cycles démarrent un lundi. */
-export function lundiSuivant(j: Jour): Jour {
-  const d = depuisJour(j);
-  const jourSemaine = (d.getUTCDay() + 6) % 7; // 0 = lundi
-  return jourSemaine === 0 ? j : ajouterJours(j, 7 - jourSemaine);
+/** The Monday on or after a date: cycles start on a Monday. */
+export function nextMonday(day: Day): Day {
+  const weekday = (fromDay(day).getUTCDay() + 6) % 7; // 0 = Monday
+  return weekday === 0 ? day : addDays(day, 7 - weekday);
 }
 
-export function finCycle(debut: Jour): Jour {
-  return ajouterJours(debut, DUREE_CYCLE_JOURS - 1);
+export function cycleEnd(startsOn: Day): Day {
+  return addDays(startsOn, CYCLE_LENGTH_DAYS - 1);
 }
 
-export interface CycleExistant {
+export interface ExistingCycle {
   id: string;
-  debut: Jour;
-  fin: Jour;
+  startsOn: Day;
+  endsOn: Day;
 }
 
-/** Date de début proposée pour le prochain cycle du trimestre. */
-export function debutPropose(trimestre: { debut: Jour }, cycles: CycleExistant[]): Jour {
-  if (!cycles.length) return lundiSuivant(trimestre.debut);
-  const dernier = [...cycles].sort((a, b) => a.fin.localeCompare(b.fin)).at(-1)!;
-  return ajouterJours(dernier.fin, 1);
+/** Suggested start date for the quarter's next cycle. */
+export function suggestedStart(quarter: { startsOn: Day }, cycles: ExistingCycle[]): Day {
+  if (!cycles.length) return nextMonday(quarter.startsOn);
+  const last = [...cycles].sort((a, b) => a.endsOn.localeCompare(b.endsOn)).at(-1)!;
+  return addDays(last.endsOn, 1);
 }
 
-/**
- * Vérifie qu'un cycle peut être placé dans le trimestre.
- * Renvoie un message d'erreur en français, ou null si tout va bien.
- */
-export function verifierCycle(
-  trimestre: { debut: Jour; fin: Jour },
-  cycles: CycleExistant[],
-  debut: Jour,
-  ignorerId?: string,
+/** Checks that a cycle fits in the quarter. Returns an error message, or null. */
+export function checkCycle(
+  quarter: { startsOn: Day; endsOn: Day },
+  cycles: ExistingCycle[],
+  startsOn: Day,
+  ignoreId?: string,
 ): string | null {
-  if (!estJourValide(debut)) return 'La date de début est invalide.';
-  const autres = cycles.filter((c) => c.id !== ignorerId);
-  if (!ignorerId && autres.length >= MAX_CYCLES) return `Un trimestre compte au plus ${MAX_CYCLES} cycles.`;
-  if (debut < trimestre.debut || debut > trimestre.fin) return 'Le cycle doit commencer pendant le trimestre.';
-  if (depuisJour(debut).getUTCDay() !== 1) return 'Un cycle commence un lundi.';
-  const fin = finCycle(debut);
-  const chevauche = autres.find((c) => debut <= c.fin && fin >= c.debut);
-  if (chevauche) return 'Ce cycle chevauche un cycle existant.';
+  if (!isValidDay(startsOn)) return 'La date de début est invalide.';
+  const others = cycles.filter((c) => c.id !== ignoreId);
+  if (!ignoreId && others.length >= MAX_CYCLES) return `Un trimestre compte au plus ${MAX_CYCLES} cycles.`;
+  if (startsOn < quarter.startsOn || startsOn > quarter.endsOn) return 'Le cycle doit commencer pendant le trimestre.';
+  if (fromDay(startsOn).getUTCDay() !== 1) return 'Un cycle commence un lundi.';
+  const endsOn = cycleEnd(startsOn);
+  if (others.some((c) => startsOn <= c.endsOn && endsOn >= c.startsOn)) return 'Ce cycle chevauche un cycle existant.';
   return null;
 }
 
-/** Les cycles sont numérotés dans l'ordre chronologique du trimestre. */
-export function numeroter<T extends { debut: Jour }>(cycles: T[]): (T & { numero: number })[] {
-  return [...cycles].sort((a, b) => a.debut.localeCompare(b.debut)).map((c, i) => ({ ...c, numero: i + 1 }));
+/** Cycles are numbered in chronological order. */
+export function numberCycles<T extends { startsOn: Day }>(cycles: T[]): (T & { number: number })[] {
+  return [...cycles].sort((a, b) => a.startsOn.localeCompare(b.startsOn)).map((c, i) => ({ ...c, number: i + 1 }));
 }
 
-/* ---------- Projets ---------- */
+/* ---------- Projects ---------- */
 
-export const LIBELLES_STATUT = {
-  recu: 'Reçu',
-  shaping: 'En shaping',
-  pret: 'Pitch prêt',
-  attente: 'Attend prochain cycle',
-  mise: 'Misé',
-  livre: 'Livré',
-  ecarte: 'Écarté',
-} as const;
+export const PROJECT_STATUSES = ['received', 'shaping', 'ready', 'waiting', 'bet', 'shipped', 'dropped'] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
-/** Statuts pour lesquels le projet doit être rattaché à un cycle */
-export const STATUTS_AVEC_CYCLE: readonly string[] = ['mise', 'livre'];
+/** Statuses for which the project must belong to a cycle */
+export const STATUSES_WITH_CYCLE: readonly ProjectStatus[] = ['bet', 'shipped'];
 
-export function verifierProjet(p: { statut: string; cycleId: string | null }): string | null {
-  if (STATUTS_AVEC_CYCLE.includes(p.statut) && !p.cycleId) {
+export function checkProject(p: { status: ProjectStatus; cycleId: string | null }): string | null {
+  if (STATUSES_WITH_CYCLE.includes(p.status) && !p.cycleId) {
     return 'Un projet misé ou livré doit être rattaché à un cycle.';
   }
   return null;
 }
 
-/** L'owner est une adresse du domaine autorisé */
-export function verifierOwner(owner: string, domaine: string): string | null {
+/** The owner is an address of the allowed domain */
+export function checkOwner(owner: string, domain: string): string | null {
   const o = owner.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+$/.test(o)) return 'L’owner doit être une adresse e-mail.';
-  if (!o.endsWith('@' + domaine.toLowerCase())) return `L’owner doit avoir une adresse @${domaine}.`;
+  if (!o.endsWith('@' + domain.toLowerCase())) return `L’owner doit avoir une adresse @${domain}.`;
   return null;
 }
 
 /* ---------- Pitch ---------- */
 
-/** Taille maximale d'un fichier joint au pitch */
-export const TAILLE_MAX_FICHIER = 10 * 1024 * 1024;
-export const TAILLE_MAX_PITCH = 100_000;
-/** Titre du modèle tant que le projet n'a pas de nom */
-export const TITRE_MODELE = '[Titre court du sujet]';
+export const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+export const MAX_PITCH_LENGTH = 100_000;
+/** Template title while the project has no name */
+export const TEMPLATE_TITLE = '[Titre court du sujet]';
 
-/** Modèle du guide « Rédiger un pitch », pré-rempli avec le nom du projet, l'auteur et la date. */
-export function modelePitch(nom: string, auteur: string, jour: string): string {
-  const [a, m, j] = jour.split('-');
-  return `# ${nom}
+/** Template from the "Rédiger un pitch" guide, filled with the project name, author and date. */
+export function pitchTemplate(name: string, author: string, day: Day): string {
+  const [y, m, d] = day.split('-');
+  return `# ${name}
 
 Appétit : [1 à 4 semaines]
-Rédigé par : ${auteur} · Date : ${j}/${m}/${a}
+Rédigé par : ${author} · Date : ${d}/${m}/${y}
 
 ## Problème
 [Situation vécue, en 3 à 5 phrases.]
@@ -156,43 +144,43 @@ Rédigé par : ${auteur} · Date : ${j}/${m}/${a}
 `;
 }
 
-/** Types servis tels quels dans le navigateur ; tout le reste est téléchargé. */
-const TYPES_AFFICHABLES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
+/** Types served inline in the browser; everything else is downloaded. */
+const INLINE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
 
-export function estAffichable(type: string): boolean {
-  return TYPES_AFFICHABLES.includes(type);
+export function isInline(contentType: string): boolean {
+  return INLINE_TYPES.includes(contentType);
 }
 
-/** Nom de fichier sans chemin ni caractères de contrôle, 200 caractères au plus. */
-export function nettoyerNomFichier(nom: string): string {
-  const base = nom.split(/[\\/]/).pop() ?? '';
-  const propre = base.replace(/[\u0000-\u001f\u007f"]/g, '').trim();
-  return (propre || 'fichier').slice(0, 200);
+/** File name without path or control characters, 200 characters at most. */
+export function cleanFilename(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? '';
+  const clean = base.replace(/[\u0000-\u001f\u007f"]/g, '').trim();
+  return (clean || 'fichier').slice(0, 200);
 }
 
-/** Retire du pitch les liens et images qui pointent vers un fichier joint supprimé. */
-export function retirerLiensFichier(pitch: string, url: string): string {
-  const echappee = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Removes from the pitch the links and images pointing to a deleted attachment. */
+export function removeAttachmentLinks(pitch: string, url: string): string {
+  const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return pitch
-    .replace(new RegExp(`^[ \\t]*!?\\[[^\\]\\n]*\\]\\(${echappee}\\)[ \\t]*\\n?`, 'gm'), '')
-    .replace(new RegExp(`!?\\[[^\\]\\n]*\\]\\(${echappee}\\)`, 'g'), '');
+    .replace(new RegExp(`^[ \\t]*!?\\[[^\\]\\n]*\\]\\(${escaped}\\)[ \\t]*\\n?`, 'gm'), '')
+    .replace(new RegExp(`!?\\[[^\\]\\n]*\\]\\(${escaped}\\)`, 'g'), '');
 }
 
-/* ---------- Point hebdo ---------- */
+/* ---------- Weekly review ---------- */
 
-/** Semaine 1 à 4 du cycle pour un jour donné, ou null hors du cycle. */
-export function semaineDe(cycle: { debut: Jour; fin: Jour }, jour: Jour): number | null {
-  if (jour < cycle.debut || jour > cycle.fin) return null;
-  const jours = Math.round((depuisJour(jour).getTime() - depuisJour(cycle.debut).getTime()) / 86_400_000);
-  return Math.min(4, Math.floor(jours / 7) + 1);
+/** Week 1 to 4 of the cycle for a given day, or null outside the cycle. */
+export function weekOf(cycle: { startsOn: Day; endsOn: Day }, day: Day): number | null {
+  if (day < cycle.startsOn || day > cycle.endsOn) return null;
+  const days = Math.round((fromDay(day).getTime() - fromDay(cycle.startsOn).getTime()) / 86_400_000);
+  return Math.min(4, Math.floor(days / 7) + 1);
 }
 
-/** Cycle en cours à cette date, sinon null. */
-export function cycleEnCours<T extends { debut: Jour; fin: Jour }>(cycles: T[], jour: Jour): T | null {
-  return cycles.find((c) => c.debut <= jour && jour <= c.fin) ?? null;
+/** The cycle running on that day, or null. */
+export function currentCycle<T extends { startsOn: Day; endsOn: Day }>(cycles: T[], day: Day): T | null {
+  return cycles.find((c) => c.startsOn <= day && day <= c.endsOn) ?? null;
 }
 
-/** Prochain cycle à commencer après cette date, sinon null. */
-export function prochainCycle<T extends { debut: Jour }>(cycles: T[], jour: Jour): T | null {
-  return [...cycles].sort((a, b) => a.debut.localeCompare(b.debut)).find((c) => c.debut > jour) ?? null;
+/** The next cycle starting after that day, or null. */
+export function nextCycle<T extends { startsOn: Day }>(cycles: T[], day: Day): T | null {
+  return [...cycles].sort((a, b) => a.startsOn.localeCompare(b.startsOn)).find((c) => c.startsOn > day) ?? null;
 }

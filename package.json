@@ -12,6 +12,7 @@
     "dev:api": "npm run dev -w api",
     "db:generate": "npm run db:generate -w api",
     "db:migrate:local": "wrangler d1 migrations apply petits-cailloux --local",
+    "db:reset:local": "rm -rf .wrangler/state && npm run db:migrate:local",
     "db:migrate:remote": "wrangler d1 migrations apply petits-cailloux --remote",
     "test": "npm test -w api",
     "deploy": "npm run build && wrangler deploy"

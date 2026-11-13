@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1794578150086,
+      "when": 1794584458285,
       "tag": "0000_init",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1794579313232,
-      "tag": "0001_projets",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1794580669303,
-      "tag": "0002_pitch",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1794582126191,
-      "tag": "0003_notes_suivi",
       "breakpoints": true
     }
   ]

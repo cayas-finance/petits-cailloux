@@ -2,118 +2,119 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-export interface Objectif {
+export interface Goal {
   id: string;
-  trimestreId: string;
-  titre: string;
+  quarterId: string;
+  title: string;
   description: string;
-  creeLe: string;
-  creePar: string;
+  createdAt: string;
+  createdBy: string;
 }
 
 export interface Cycle {
   id: string;
-  trimestreId: string;
-  numero: number;
-  debut: string;
-  fin: string;
+  quarterId: string;
+  number: number;
+  startsOn: string;
+  endsOn: string;
 }
 
-export interface Trimestre {
+export interface Quarter {
   id: string;
-  annee: number;
-  numero: number;
-  debut: string;
-  fin: string;
-  objectifs: Objectif[];
+  year: number;
+  number: number;
+  startsOn: string;
+  endsOn: string;
+  goals: Goal[];
   cycles: Cycle[];
-  /** Fourni par le détail d'un trimestre : date proposée pour le prochain cycle */
-  prochainDebut?: string;
+  /** Given by the quarter detail: suggested start date for the next cycle */
+  nextStart?: string;
 }
 
-export const STATUTS = {
-  recu: 'Reçu',
+/** Project statuses, with their French labels */
+export const STATUSES = {
+  received: 'Reçu',
   shaping: 'En shaping',
-  pret: 'Pitch prêt',
-  attente: 'Attend prochain cycle',
-  mise: 'Misé',
-  livre: 'Livré',
-  ecarte: 'Écarté',
+  ready: 'Pitch prêt',
+  waiting: 'Attend prochain cycle',
+  bet: 'Misé',
+  shipped: 'Livré',
+  dropped: 'Écarté',
 } as const;
-export type Statut = keyof typeof STATUTS;
-export const STATUTS_AVEC_CYCLE: Statut[] = ['mise', 'livre'];
+export type Status = keyof typeof STATUSES;
+export const STATUSES_WITH_CYCLE: Status[] = ['bet', 'shipped'];
 
-export interface Projet {
+export interface Project {
   id: string;
-  nom: string;
+  name: string;
   owner: string;
-  statut: Statut;
+  status: Status;
   cycleId: string | null;
-  objectifIds: string[];
-  cycle: { id: string; numero: number; trimestreId: string; debut: string; fin: string } | null;
-  /** Pitch en markdown */
+  goalIds: string[];
+  cycle: { id: string; number: number; quarterId: string; startsOn: string; endsOn: string } | null;
+  /** Pitch in markdown */
   pitch: string;
-  creeLe: string;
-  creePar: string;
-  majLe: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
 }
 
-export interface ProjetSaisi {
-  nom: string;
+export interface ProjectInput {
+  name: string;
   owner: string;
-  statut: Statut;
+  status: Status;
   cycleId: string | null;
-  objectifIds: string[];
-  /** À la création seulement */
+  goalIds: string[];
+  /** On creation only */
   pitch?: string;
 }
 
-export interface Fichier {
+export interface Attachment {
   id: string;
-  projetId: string;
-  nom: string;
-  type: string;
-  taille: number;
+  projectId: string;
+  filename: string;
+  contentType: string;
+  size: number;
   url: string;
-  creeLe: string;
-  creePar: string;
+  createdAt: string;
+  createdBy: string;
 }
 
-export const TAILLE_MAX_FICHIER = 10 * 1024 * 1024;
+export const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
-export interface NoteSuivi {
+export interface ProgressNote {
   id: string;
-  projetId: string;
+  projectId: string;
   cycleId: string;
-  semaine: number;
-  texte: string;
-  creeLe: string;
-  creePar: string;
-  majLe: string;
-  majPar: string;
+  week: number;
+  text: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
 }
 
-export interface Pari extends Projet {
-  notes: NoteSuivi[];
+export interface Bet extends Project {
+  notes: ProgressNote[];
 }
 
-export interface PointHebdo {
+export interface WeeklyReview {
   cycle: Cycle | null;
-  /** Semaine 1 à 4 si le cycle est en cours, sinon null */
-  semaine: number | null;
-  /** S'il n'y a pas de cycle en cours : le prochain à commencer */
-  prochain: Cycle | null;
-  paris: Pari[];
+  /** Week 1 to 4 when the cycle is running, otherwise null */
+  week: number | null;
+  /** When no cycle is running: the next one to start */
+  next: Cycle | null;
+  bets: Bet[];
 }
 
-export const MAX_OBJECTIFS = 2;
+export const MAX_GOALS = 2;
 export const MAX_CYCLES = 3;
 
-/** Message d'erreur lisible, tiré de la réponse de l'API */
-export function messageErreur(e: unknown): string {
+/** User-facing error message, taken from the API response */
+export function errorMessage(e: unknown): string {
   if (e instanceof HttpErrorResponse) {
     if (e.status === 0) return 'Le serveur ne répond pas. Vérifiez votre connexion.';
-    return e.error?.erreur ?? 'Une erreur est survenue.';
+    return e.error?.error ?? 'Une erreur est survenue.';
   }
   return 'Une erreur est survenue.';
 }
@@ -122,83 +123,84 @@ export function messageErreur(e: unknown): string {
 export class Api {
   private readonly http = inject(HttpClient);
 
-  moi() {
-    return firstValueFrom(this.http.get<{ email: string }>('/api/moi'));
-  }
-  trimestres() {
-    return firstValueFrom(this.http.get<Trimestre[]>('/api/trimestres'));
-  }
-  trimestre(id: string) {
-    return firstValueFrom(this.http.get<Trimestre>(`/api/trimestres/${id}`));
-  }
-  creerTrimestre(annee: number, numero: number) {
-    return firstValueFrom(this.http.post<Trimestre>('/api/trimestres', { annee, numero }));
-  }
-  supprimerTrimestre(id: string) {
-    return firstValueFrom(this.http.delete<void>(`/api/trimestres/${id}`));
-  }
-  ajouterObjectif(trimestreId: string, titre: string, description: string) {
-    return firstValueFrom(this.http.post<Trimestre>(`/api/trimestres/${trimestreId}/objectifs`, { titre, description }));
-  }
-  modifierObjectif(id: string, titre: string, description: string) {
-    return firstValueFrom(this.http.patch<Trimestre>(`/api/objectifs/${id}`, { titre, description }));
-  }
-  supprimerObjectif(id: string) {
-    return firstValueFrom(this.http.delete<Trimestre>(`/api/objectifs/${id}`));
-  }
-  ajouterCycle(trimestreId: string, debut: string) {
-    return firstValueFrom(this.http.post<Trimestre>(`/api/trimestres/${trimestreId}/cycles`, { debut }));
-  }
-  modifierCycle(id: string, debut: string) {
-    return firstValueFrom(this.http.patch<Trimestre>(`/api/cycles/${id}`, { debut }));
-  }
-  supprimerCycle(id: string) {
-    return firstValueFrom(this.http.delete<Trimestre>(`/api/cycles/${id}`));
+  me() {
+    return firstValueFrom(this.http.get<{ email: string }>('/api/me'));
   }
 
-  projets() {
-    return firstValueFrom(this.http.get<Projet[]>('/api/projets'));
+  quarters() {
+    return firstValueFrom(this.http.get<Quarter[]>('/api/quarters'));
   }
-  projet(id: string) {
-    return firstValueFrom(this.http.get<Projet>(`/api/projets/${id}`));
+  quarter(id: string) {
+    return firstValueFrom(this.http.get<Quarter>(`/api/quarters/${id}`));
   }
-  creerProjet(p: ProjetSaisi) {
-    return firstValueFrom(this.http.post<Projet>('/api/projets', p));
+  createQuarter(year: number, number: number) {
+    return firstValueFrom(this.http.post<Quarter>('/api/quarters', { year, number }));
   }
-  modifierProjet(id: string, p: ProjetSaisi) {
-    return firstValueFrom(this.http.patch<Projet>(`/api/projets/${id}`, p));
+  deleteQuarter(id: string) {
+    return firstValueFrom(this.http.delete<void>(`/api/quarters/${id}`));
   }
-  supprimerProjet(id: string) {
-    return firstValueFrom(this.http.delete<void>(`/api/projets/${id}`));
+  addGoal(quarterId: string, title: string, description: string) {
+    return firstValueFrom(this.http.post<Quarter>(`/api/quarters/${quarterId}/goals`, { title, description }));
+  }
+  updateGoal(id: string, title: string, description: string) {
+    return firstValueFrom(this.http.patch<Quarter>(`/api/goals/${id}`, { title, description }));
+  }
+  deleteGoal(id: string) {
+    return firstValueFrom(this.http.delete<Quarter>(`/api/goals/${id}`));
+  }
+  addCycle(quarterId: string, startsOn: string) {
+    return firstValueFrom(this.http.post<Quarter>(`/api/quarters/${quarterId}/cycles`, { startsOn }));
+  }
+  updateCycle(id: string, startsOn: string) {
+    return firstValueFrom(this.http.patch<Quarter>(`/api/cycles/${id}`, { startsOn }));
+  }
+  deleteCycle(id: string) {
+    return firstValueFrom(this.http.delete<Quarter>(`/api/cycles/${id}`));
   }
 
-  modelePitch() {
-    return firstValueFrom(this.http.get<{ pitch: string }>('/api/pitch/modele'));
+  projects() {
+    return firstValueFrom(this.http.get<Project[]>('/api/projects'));
   }
-  enregistrerPitch(id: string, pitch: string) {
-    return firstValueFrom(this.http.put<Projet>(`/api/projets/${id}/pitch`, { pitch }));
+  project(id: string) {
+    return firstValueFrom(this.http.get<Project>(`/api/projects/${id}`));
   }
-  fichiers(projetId: string) {
-    return firstValueFrom(this.http.get<Fichier[]>(`/api/projets/${projetId}/fichiers`));
+  createProject(p: ProjectInput) {
+    return firstValueFrom(this.http.post<Project>('/api/projects', p));
   }
-  envoyerFichier(projetId: string, fichier: File) {
+  updateProject(id: string, p: ProjectInput) {
+    return firstValueFrom(this.http.patch<Project>(`/api/projects/${id}`, p));
+  }
+  deleteProject(id: string) {
+    return firstValueFrom(this.http.delete<void>(`/api/projects/${id}`));
+  }
+  setStatus(projectId: string, status: Status) {
+    return firstValueFrom(this.http.patch<Project>(`/api/projects/${projectId}/status`, { status }));
+  }
+
+  pitchTemplate() {
+    return firstValueFrom(this.http.get<{ pitch: string }>('/api/pitch/template'));
+  }
+  savePitch(id: string, pitch: string) {
+    return firstValueFrom(this.http.put<Project>(`/api/projects/${id}/pitch`, { pitch }));
+  }
+  attachments(projectId: string) {
+    return firstValueFrom(this.http.get<Attachment[]>(`/api/projects/${projectId}/attachments`));
+  }
+  uploadAttachment(projectId: string, file: File) {
     const form = new FormData();
-    form.append('fichier', fichier, fichier.name);
-    return firstValueFrom(this.http.post<Fichier>(`/api/projets/${projetId}/fichiers`, form));
+    form.append('file', file, file.name);
+    return firstValueFrom(this.http.post<Attachment>(`/api/projects/${projectId}/attachments`, form));
   }
-  supprimerFichier(id: string) {
-    return firstValueFrom(this.http.delete<Projet | null>(`/api/fichiers/${id}`));
+  deleteAttachment(id: string) {
+    return firstValueFrom(this.http.delete<Project | null>(`/api/attachments/${id}`));
   }
 
-  pointHebdo() {
-    return firstValueFrom(this.http.get<PointHebdo>('/api/point-hebdo'));
+  weeklyReview() {
+    return firstValueFrom(this.http.get<WeeklyReview>('/api/weekly-review'));
   }
-  enregistrerNote(projetId: string, cycleId: string, semaine: number, texte: string) {
+  saveNote(projectId: string, cycleId: string, week: number, text: string) {
     return firstValueFrom(
-      this.http.put<NoteSuivi | null>(`/api/projets/${projetId}/notes/${cycleId}/${semaine}`, { texte }),
+      this.http.put<ProgressNote | null>(`/api/projects/${projectId}/notes/${cycleId}/${week}`, { text }),
     );
-  }
-  changerStatut(projetId: string, statut: Statut) {
-    return firstValueFrom(this.http.patch<Projet>(`/api/projets/${projetId}/statut`, { statut }));
   }
 }

@@ -2,45 +2,45 @@ import { createMiddleware } from 'hono/factory';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { Env } from './env';
 
-// Cloudflare Access protège le site devant le Worker. Le Worker vérifie
-// quand même le jeton signé qu'Access ajoute à chaque requête, pour ne
-// jamais faire confiance à un en-tête qu'on pourrait forger.
-const jwksParEquipe = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+// Cloudflare Access protects the site in front of the Worker. The Worker still
+// verifies the signed token Access adds to every request, so it never trusts a
+// header that could be forged.
+const jwksByTeam = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
-function jwks(equipe: string) {
-  let j = jwksParEquipe.get(equipe);
-  if (!j) {
-    j = createRemoteJWKSet(new URL(`https://${equipe}/cdn-cgi/access/certs`));
-    jwksParEquipe.set(equipe, j);
+function jwks(teamDomain: string) {
+  let set = jwksByTeam.get(teamDomain);
+  if (!set) {
+    set = createRemoteJWKSet(new URL(`https://${teamDomain}/cdn-cgi/access/certs`));
+    jwksByTeam.set(teamDomain, set);
   }
-  return j;
+  return set;
 }
 
-export const authentifier = createMiddleware<Env>(async (c, next) => {
-  const domaine = (c.env.DOMAINE_AUTORISE || 'cayas.fr').toLowerCase();
+export const authenticate = createMiddleware<Env>(async (c, next) => {
+  const domain = (c.env.ALLOWED_DOMAIN || 'cayas.fr').toLowerCase();
 
-  // Développement local uniquement : DEV_EMAIL est défini dans .dev.vars, jamais en production.
+  // Local development only: DEV_EMAIL is set in .dev.vars, never in production.
   if (c.env.DEV_EMAIL) {
     c.set('email', c.env.DEV_EMAIL.toLowerCase());
     return next();
   }
 
-  const jeton = c.req.header('cf-access-jwt-assertion');
-  if (!jeton || !c.env.ACCESS_EQUIPE || !c.env.ACCESS_AUD) {
-    return c.json({ erreur: 'Accès réservé. Connectez-vous avec votre compte Cayas.' }, 401);
+  const token = c.req.header('cf-access-jwt-assertion');
+  if (!token || !c.env.ACCESS_TEAM_DOMAIN || !c.env.ACCESS_AUD) {
+    return c.json({ error: 'Accès réservé. Connectez-vous avec votre compte Cayas.' }, 401);
   }
   try {
-    const { payload } = await jwtVerify(jeton, jwks(c.env.ACCESS_EQUIPE), {
-      issuer: `https://${c.env.ACCESS_EQUIPE}`,
+    const { payload } = await jwtVerify(token, jwks(c.env.ACCESS_TEAM_DOMAIN), {
+      issuer: `https://${c.env.ACCESS_TEAM_DOMAIN}`,
       audience: c.env.ACCESS_AUD,
     });
     const email = String(payload['email'] ?? '').toLowerCase();
-    if (!email.endsWith('@' + domaine)) {
-      return c.json({ erreur: `Accès réservé aux adresses @${domaine}.` }, 403);
+    if (!email.endsWith('@' + domain)) {
+      return c.json({ error: `Accès réservé aux adresses @${domain}.` }, 403);
     }
     c.set('email', email);
   } catch {
-    return c.json({ erreur: 'Session expirée. Rechargez la page.' }, 401);
+    return c.json({ error: 'Session expirée. Rechargez la page.' }, 401);
   }
   return next();
 });

@@ -3,34 +3,34 @@ import { Router, RouterLink } from '@angular/router';
 import { ZardButtonComponent } from '@/shared/components/button';
 import { ZardBadgeComponent } from '@/shared/components/badge';
 import { ZardSonnerService } from '@/shared/components/sonner';
-import { Api, Fichier, Projet, STATUTS, Trimestre, messageErreur } from '../core/api';
-import { jourCourt } from '../core/dates';
-import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
-import { libelleCycle, typeBadgeStatut } from './projet-libelles';
+import { Api, Attachment, Project, Quarter, STATUSES, errorMessage } from '../core/api';
+import { shortDay } from '../core/dates';
+import { PitchViewComponent } from '../pitch/pitch-view.component';
+import { cycleLabel, statusBadgeType } from './project-labels';
 
-/** Le pitch seul, en lecture : pour le lire avant la betting table ou le partager. */
+/** The pitch alone, read-only: to read it before the betting table or to share it. */
 @Component({
   selector: 'app-pitch',
-  imports: [RouterLink, ZardButtonComponent, ZardBadgeComponent, PitchRenduComponent],
+  imports: [RouterLink, ZardButtonComponent, ZardBadgeComponent, PitchViewComponent],
   template: `
-    @if (projet(); as p) {
+    @if (project(); as p) {
       <div class="mx-auto flex max-w-3xl flex-col gap-6">
         <div class="flex flex-wrap items-center justify-between gap-2 print:hidden">
-          <a [routerLink]="['/projets', p.id]" class="text-sm text-muted-foreground hover:text-foreground">← Fiche du projet</a>
+          <a [routerLink]="['/projects', p.id]" class="text-sm text-muted-foreground hover:text-foreground">← Fiche du projet</a>
           <div class="flex gap-2">
-            <button z-button zType="outline" zSize="sm" (click)="imprimer()">Imprimer</button>
-            <a z-button zSize="sm" [routerLink]="['/projets', p.id]" [queryParams]="{ pitch: 'edition' }">Modifier le pitch</a>
+            <button z-button zType="outline" zSize="sm" (click)="print()">Imprimer</button>
+            <a z-button zSize="sm" [routerLink]="['/projects', p.id]" [queryParams]="{ pitch: 'edit' }">Modifier le pitch</a>
           </div>
         </div>
 
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-4 text-sm text-muted-foreground">
-          <z-badge [zType]="badge(p.statut)">{{ statut(p.statut) }}</z-badge>
+          <z-badge [zType]="badge(p.status)">{{ status(p.status) }}</z-badge>
           <span>Owner : {{ p.owner }}</span>
           @if (p.cycle) {
-            <span>{{ cycle(p.cycle) }} · {{ court(p.cycle.debut) }} → {{ court(p.cycle.fin) }}</span>
+            <span>{{ cycle(p.cycle) }} · {{ short(p.cycle.startsOn) }} → {{ short(p.cycle.endsOn) }}</span>
           }
-          @if (objectifs().length) {
-            <span>Objectifs : {{ objectifs().join(' · ') }}</span>
+          @if (goals().length) {
+            <span>Objectifs : {{ goals().join(' · ') }}</span>
           } @else {
             <span>Aucun objectif rattaché</span>
           }
@@ -38,19 +38,19 @@ import { libelleCycle, typeBadgeStatut } from './projet-libelles';
 
         <article>
           @if (p.pitch.trim()) {
-            <app-pitch-rendu [markdown]="p.pitch" />
+            <app-pitch-view [markdown]="p.pitch" />
           } @else {
-            <h1 class="text-xl font-bold">{{ p.nom }}</h1>
+            <h1 class="text-xl font-bold">{{ p.name }}</h1>
             <p class="mt-4 text-sm text-muted-foreground">Pas encore de pitch.</p>
           }
         </article>
 
-        @if (fichiers().length) {
+        @if (attachments().length) {
           <div class="flex flex-col gap-2 border-t pt-4 text-sm">
             <h2 class="font-medium">Fichiers joints</h2>
             <ul class="flex flex-col gap-1">
-              @for (f of fichiers(); track f.id) {
-                <li><a [href]="f.url" target="_blank" rel="noopener" class="text-primary hover:underline">{{ f.nom }}</a></li>
+              @for (a of attachments(); track a.id) {
+                <li><a [href]="a.url" target="_blank" rel="noopener" class="text-primary hover:underline">{{ a.filename }}</a></li>
               }
             </ul>
           </div>
@@ -68,45 +68,45 @@ export class PitchPage {
 
   readonly id = input.required<string>();
 
-  protected readonly projet = signal<Projet | null>(null);
-  protected readonly fichiers = signal<Fichier[]>([]);
-  private readonly trimestres = signal<Trimestre[]>([]);
+  protected readonly project = signal<Project | null>(null);
+  protected readonly attachments = signal<Attachment[]>([]);
+  private readonly quarters = signal<Quarter[]>([]);
 
-  protected readonly objectifs = computed(() => {
-    const ids = this.projet()?.objectifIds ?? [];
-    return this.trimestres()
-      .flatMap((t) => t.objectifs)
-      .filter((o) => ids.includes(o.id))
-      .map((o) => o.titre);
+  protected readonly goals = computed(() => {
+    const ids = this.project()?.goalIds ?? [];
+    return this.quarters()
+      .flatMap((q) => q.goals)
+      .filter((g) => ids.includes(g.id))
+      .map((g) => g.title);
   });
 
-  protected readonly badge = typeBadgeStatut;
-  protected readonly cycle = libelleCycle;
-  protected readonly court = jourCourt;
-  protected statut(s: Projet['statut']) {
-    return STATUTS[s];
+  protected readonly badge = statusBadgeType;
+  protected readonly cycle = cycleLabel;
+  protected readonly short = shortDay;
+  protected status(s: Project['status']) {
+    return STATUSES[s];
   }
 
   constructor() {
     effect(() => {
-      this.charger(this.id());
+      this.load(this.id());
     });
   }
 
-  private async charger(id: string) {
+  private async load(id: string) {
     try {
-      const [p, fs, ts] = await Promise.all([this.api.projet(id), this.api.fichiers(id), this.api.trimestres()]);
-      this.trimestres.set(ts);
-      this.fichiers.set(fs);
-      this.projet.set(p);
-      document.title = `${p.nom} · Pitch`;
+      const [p, as, qs] = await Promise.all([this.api.project(id), this.api.attachments(id), this.api.quarters()]);
+      this.quarters.set(qs);
+      this.attachments.set(as);
+      this.project.set(p);
+      document.title = `${p.name} · Pitch`;
     } catch (e) {
-      this.toast.error(messageErreur(e));
-      await this.router.navigate(['/projets']);
+      this.toast.error(errorMessage(e));
+      await this.router.navigate(['/projects']);
     }
   }
 
-  protected imprimer() {
+  protected print() {
     window.print();
   }
 }
