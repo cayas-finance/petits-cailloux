@@ -81,6 +81,31 @@ export interface Fichier {
 
 export const TAILLE_MAX_FICHIER = 10 * 1024 * 1024;
 
+export interface NoteSuivi {
+  id: string;
+  projetId: string;
+  cycleId: string;
+  semaine: number;
+  texte: string;
+  creeLe: string;
+  creePar: string;
+  majLe: string;
+  majPar: string;
+}
+
+export interface Pari extends Projet {
+  notes: NoteSuivi[];
+}
+
+export interface PointHebdo {
+  cycle: Cycle | null;
+  /** Semaine 1 à 4 si le cycle est en cours, sinon null */
+  semaine: number | null;
+  /** S'il n'y a pas de cycle en cours : le prochain à commencer */
+  prochain: Cycle | null;
+  paris: Pari[];
+}
+
 export const MAX_OBJECTIFS = 2;
 export const MAX_CYCLES = 3;
 
@@ -163,5 +188,17 @@ export class Api {
   }
   supprimerFichier(id: string) {
     return firstValueFrom(this.http.delete<Projet | null>(`/api/fichiers/${id}`));
+  }
+
+  pointHebdo() {
+    return firstValueFrom(this.http.get<PointHebdo>('/api/point-hebdo'));
+  }
+  enregistrerNote(projetId: string, cycleId: string, semaine: number, texte: string) {
+    return firstValueFrom(
+      this.http.put<NoteSuivi | null>(`/api/projets/${projetId}/notes/${cycleId}/${semaine}`, { texte }),
+    );
+  }
+  changerStatut(projetId: string, statut: Statut) {
+    return firstValueFrom(this.http.patch<Projet>(`/api/projets/${projetId}/statut`, { statut }));
   }
 }

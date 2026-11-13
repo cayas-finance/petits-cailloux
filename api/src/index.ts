@@ -6,7 +6,7 @@ import { and, asc, eq, desc, inArray } from 'drizzle-orm';
 import { authentifier } from './auth';
 import type { Env } from './env';
 import * as schema from './db/schema';
-import { STATUTS_PROJET, cycles, fichiers, objectifs, projetObjectifs, projets, trimestres } from './db/schema';
+import { STATUTS_PROJET, cycles, fichiers, notesSuivi, objectifs, projetObjectifs, projets, trimestres } from './db/schema';
 import {
   MAX_OBJECTIFS,
   TAILLE_MAX_FICHIER,
@@ -17,6 +17,10 @@ import {
   nettoyerNomFichier,
   retirerLiensFichier,
   bornesTrimestre,
+  cycleEnCours,
+  prochainCycle,
+  semaineDe,
+  versJour,
   debutPropose,
   finCycle,
   idTrimestre,
@@ -129,6 +133,7 @@ app.delete('/trimestres/:id', async (c) => {
   await db.batch([
     db.delete(projetObjectifs).where(inArray(projetObjectifs.objectifId, objIds.length ? objIds : [''])),
     db.delete(objectifs).where(eq(objectifs.trimestreId, id)),
+    db.delete(notesSuivi).where(inArray(notesSuivi.cycleId, cyIds.length ? cyIds : [''])),
     db.delete(cycles).where(eq(cycles.trimestreId, id)),
     db.delete(trimestres).where(eq(trimestres.id, id)),
   ]);
@@ -231,7 +236,7 @@ app.delete('/cycles/:id', async (c) => {
   if (lies.length) {
     return c.json({ erreur: `Ce cycle porte ${lies.length} projet${lies.length > 1 ? 's' : ''}. ${lies.length > 1 ? "Changez-les" : "Changez-le"} de cycle avant de le supprimer.` }, 409);
   }
-  await db.delete(cycles).where(eq(cycles.id, cy.id));
+  await db.batch([db.delete(notesSuivi).where(eq(notesSuivi.cycleId, cy.id)), db.delete(cycles).where(eq(cycles.id, cy.id))]);
   return c.json(await chargerTrimestre(c, cy.trimestreId));
 });
 
@@ -337,6 +342,7 @@ app.delete('/projets/:id', async (c) => {
   const joints = await db.select({ id: fichiers.id }).from(fichiers).where(eq(fichiers.projetId, id));
   await db.batch([
     db.delete(projetObjectifs).where(eq(projetObjectifs.projetId, id)),
+    db.delete(notesSuivi).where(eq(notesSuivi.projetId, id)),
     db.delete(fichiers).where(eq(fichiers.projetId, id)),
     db.delete(projets).where(eq(projets.id, id)),
   ]);
@@ -442,6 +448,86 @@ app.delete('/fichiers/:id', async (c) => {
   const [p] = await projetsComplets(db, [f.projetId]);
   return c.json(p ?? null);
 });
+
+/* ---------- Point hebdo ---------- */
+
+/** Paris du cycle en cours (misés ou livrés), avec leurs notes de suivi par semaine. */
+app.get('/point-hebdo', async (c) => {
+  const db = base(c);
+  const jour = versJour(new Date());
+  const tous = numeroter(await db.select().from(cycles));
+  // Le point hebdo porte uniquement sur le cycle en cours.
+  const cycle = cycleEnCours(tous, jour);
+  if (!cycle) return c.json({ cycle: null, semaine: null, prochain: prochainCycle(tous, jour), paris: [] });
+
+  const ps = await db
+    .select({ id: projets.id })
+    .from(projets)
+    .where(and(eq(projets.cycleId, cycle.id), inArray(projets.statut, ['mise', 'livre'])));
+  const paris = await projetsComplets(db, ps.map((p) => p.id));
+  const notes = ps.length
+    ? await db.select().from(notesSuivi).where(and(eq(notesSuivi.cycleId, cycle.id), inArray(notesSuivi.projetId, ps.map((p) => p.id))))
+    : [];
+  return c.json({
+    cycle,
+    semaine: semaineDe(cycle, jour),
+    prochain: null,
+    paris: paris
+      .sort((a, b) => (a.statut === b.statut ? a.nom.localeCompare(b.nom, 'fr') : a.statut === 'mise' ? -1 : 1))
+      .map((p) => ({ ...p, notes: notes.filter((n) => n.projetId === p.id).sort((a, b) => b.semaine - a.semaine) })),
+  });
+});
+
+/** Note de suivi d'un pari pour une semaine du cycle ; un texte vide la supprime. */
+app.put(
+  '/projets/:id/notes/:cycleId/:semaine',
+  valider('json', z.object({ texte: z.string().trim().max(4000, 'La note est trop longue.') })),
+  async (c) => {
+    const db = base(c);
+    const { id, cycleId } = c.req.param();
+    const semaine = Number(c.req.param('semaine'));
+    if (!Number.isInteger(semaine) || semaine < 1 || semaine > 4) return c.json({ erreur: 'Semaine invalide.' }, 400);
+    const p = await db.query.projets.findFirst({ where: eq(projets.id, id) });
+    if (!p) return c.json({ erreur: 'Projet introuvable.' }, 404);
+    if (p.cycleId !== cycleId) return c.json({ erreur: 'Ce projet n’est pas pris dans ce cycle.' }, 400);
+
+    const { texte } = c.req.valid('json');
+    const cle = and(eq(notesSuivi.projetId, id), eq(notesSuivi.cycleId, cycleId), eq(notesSuivi.semaine, semaine));
+    if (!texte) {
+      await db.delete(notesSuivi).where(cle);
+      return c.json(null);
+    }
+    const t = maintenant();
+    const email = c.get('email');
+    const [note] = await db
+      .insert(notesSuivi)
+      .values({ id: crypto.randomUUID(), projetId: id, cycleId, semaine, texte, creeLe: t, creePar: email, majLe: t, majPar: email })
+      .onConflictDoUpdate({
+        target: [notesSuivi.projetId, notesSuivi.cycleId, notesSuivi.semaine],
+        set: { texte, majLe: t, majPar: email },
+      })
+      .returning();
+    return c.json(note);
+  },
+);
+
+/** Change seulement le statut d'un projet (ex. « Marquer livré » au point hebdo). */
+app.patch(
+  '/projets/:id/statut',
+  valider('json', z.object({ statut: z.enum(STATUTS_PROJET, { error: 'Statut inconnu.' }) })),
+  async (c) => {
+    const db = base(c);
+    const id = c.req.param('id');
+    const p = await db.query.projets.findFirst({ where: eq(projets.id, id) });
+    if (!p) return c.json({ erreur: 'Projet introuvable.' }, 404);
+    const { statut } = c.req.valid('json');
+    const erreur = verifierProjet({ statut, cycleId: p.cycleId });
+    if (erreur) return c.json({ erreur }, 400);
+    await db.update(projets).set({ statut, majLe: maintenant() }).where(eq(projets.id, id));
+    const [maj] = await projetsComplets(db, [id]);
+    return c.json(maj);
+  },
+);
 
 app.all('*', (c) => c.json({ erreur: 'Route inconnue.' }, 404));
 

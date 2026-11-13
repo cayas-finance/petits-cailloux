@@ -32,5 +32,10 @@ export const routes: Routes = [
     title: 'Projet · Petits cailloux',
     loadComponent: () => import('./pages/projet.page').then((m) => m.ProjetPage),
   },
+  {
+    path: 'point-hebdo',
+    title: 'Point hebdo · Petits cailloux',
+    loadComponent: () => import('./pages/point-hebdo.page').then((m) => m.PointHebdoPage),
+  },
   { path: '**', redirectTo: 'trimestres' },
 ];
