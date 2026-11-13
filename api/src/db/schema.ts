@@ -60,11 +60,30 @@ export const projets = sqliteTable(
     statut: text('statut', { enum: STATUTS_PROJET }).notNull().default('recu'),
     /** Cycle dans lequel le projet est pris ; vide tant qu'il n'est pas misé */
     cycleId: text('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
+    /** Pitch rédigé en markdown, initialisé avec le modèle du guide */
+    pitch: text('pitch').notNull().default(''),
     creeLe: text('cree_le').notNull(),
     creePar: text('cree_par').notNull(),
     majLe: text('maj_le').notNull(),
   },
   (t) => [index('projets_cycle').on(t.cycleId), index('projets_statut').on(t.statut)],
+);
+
+/** Images et fichiers joints à un pitch ; le contenu est dans R2 sous projets/<projetId>/<id> */
+export const fichiers = sqliteTable(
+  'fichiers',
+  {
+    id: text('id').primaryKey(),
+    projetId: text('projet_id')
+      .notNull()
+      .references(() => projets.id, { onDelete: 'cascade' }),
+    nom: text('nom').notNull(),
+    type: text('type').notNull(),
+    taille: integer('taille').notNull(),
+    creeLe: text('cree_le').notNull(),
+    creePar: text('cree_par').notNull(),
+  },
+  (t) => [index('fichiers_projet').on(t.projetId)],
 );
 
 /** Un projet peut servir 0, 1 ou plusieurs objectifs */

@@ -6,6 +6,7 @@ Outil interne de Cayas pour la méthode produit Petit Poucet. Interface et texte
 
 - `web/` : Angular (composants autonomes, signals, sans zone) + Zard UI (`web/src/app/shared/components/`, code copié, modifiable). Skill : `angular-developer`.
 - `api/` : Worker Cloudflare avec Hono, D1 via Drizzle. Règles métier pures dans `api/src/domain.ts`, testées dans `api/test/`. Skills : `wrangler`, `workers-best-practices`.
+- Pitch : markdown édité avec OverType (`web/src/app/pitch/`), rendu avec marked + DOMPurify. Fichiers joints dans R2 (`FICHIERS`), servis par `/api/fichiers/:id` : seuls images et PDF s'affichent, le reste est téléchargé.
 - Un seul Worker sert l'interface et l'API (`wrangler.jsonc`, `run_worker_first: ["/api/*"]`).
 - Les messages d'erreur de l'API sont en français, dans `{ erreur: "..." }`, et l'interface les affiche tels quels.
 

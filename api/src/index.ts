@@ -6,9 +6,14 @@ import { and, asc, eq, desc, inArray } from 'drizzle-orm';
 import { authentifier } from './auth';
 import type { Env } from './env';
 import * as schema from './db/schema';
-import { STATUTS_PROJET, cycles, objectifs, projetObjectifs, projets, trimestres } from './db/schema';
+import { STATUTS_PROJET, cycles, fichiers, objectifs, projetObjectifs, projets, trimestres } from './db/schema';
 import {
   MAX_OBJECTIFS,
+  TAILLE_MAX_FICHIER,
+  TAILLE_MAX_PITCH,
+  estAffichable,
+  modelePitch,
+  nettoyerNomFichier,
   bornesTrimestre,
   debutPropose,
   finCycle,
@@ -281,7 +286,17 @@ app.post('/projets', valider('json', corpsProjet), async (c) => {
   const t = maintenant();
   const ids = [...new Set(p.objectifIds)];
   await db.batch([
-    db.insert(projets).values({ id, nom: p.nom, owner: p.owner, statut: p.statut, cycleId: p.cycleId, creeLe: t, creePar: c.get('email'), majLe: t }),
+    db.insert(projets).values({
+      id,
+      nom: p.nom,
+      owner: p.owner,
+      statut: p.statut,
+      cycleId: p.cycleId,
+      pitch: modelePitch(p.nom, p.owner, t.slice(0, 10)),
+      creeLe: t,
+      creePar: c.get('email'),
+      majLe: t,
+    }),
     ...ids.map((objectifId) => db.insert(projetObjectifs).values({ projetId: id, objectifId })),
   ]);
   const [cree] = await projetsComplets(db, [id]);
@@ -310,7 +325,103 @@ app.patch('/projets/:id', valider('json', corpsProjet), async (c) => {
 app.delete('/projets/:id', async (c) => {
   const db = base(c);
   const id = c.req.param('id');
-  await db.batch([db.delete(projetObjectifs).where(eq(projetObjectifs.projetId, id)), db.delete(projets).where(eq(projets.id, id))]);
+  const joints = await db.select({ id: fichiers.id }).from(fichiers).where(eq(fichiers.projetId, id));
+  await db.batch([
+    db.delete(projetObjectifs).where(eq(projetObjectifs.projetId, id)),
+    db.delete(fichiers).where(eq(fichiers.projetId, id)),
+    db.delete(projets).where(eq(projets.id, id)),
+  ]);
+  if (joints.length) await c.env.FICHIERS.delete(joints.map((f) => cleFichier(id, f.id)));
+  return c.body(null, 204);
+});
+
+/* ---------- Pitch et fichiers joints ---------- */
+
+const cleFichier = (projetId: string, id: string) => `projets/${projetId}/${id}`;
+const urlFichier = (id: string) => `/api/fichiers/${id}`;
+const versFichier = (f: typeof fichiers.$inferSelect) => ({ ...f, url: urlFichier(f.id) });
+
+app.put(
+  '/projets/:id/pitch',
+  valider('json', z.object({ pitch: z.string().max(TAILLE_MAX_PITCH, 'Le pitch est trop long.') })),
+  async (c) => {
+    const db = base(c);
+    const id = c.req.param('id');
+    const maj = await db
+      .update(projets)
+      .set({ pitch: c.req.valid('json').pitch, majLe: maintenant() })
+      .where(eq(projets.id, id))
+      .returning({ id: projets.id });
+    if (!maj.length) return c.json({ erreur: 'Projet introuvable.' }, 404);
+    const [p] = await projetsComplets(db, [id]);
+    return c.json(p);
+  },
+);
+
+app.get('/projets/:id/fichiers', async (c) => {
+  const liste = await base(c)
+    .select()
+    .from(fichiers)
+    .where(eq(fichiers.projetId, c.req.param('id')))
+    .orderBy(asc(fichiers.creeLe));
+  return c.json(liste.map(versFichier));
+});
+
+app.post('/projets/:id/fichiers', async (c) => {
+  const db = base(c);
+  const projetId = c.req.param('id');
+  if (!(await db.query.projets.findFirst({ where: eq(projets.id, projetId) }))) {
+    return c.json({ erreur: 'Projet introuvable.' }, 404);
+  }
+  const form = await c.req.formData().catch(() => null);
+  const fichier = form?.get('fichier');
+  if (!(fichier instanceof File)) return c.json({ erreur: 'Aucun fichier reçu.' }, 400);
+  if (fichier.size === 0) return c.json({ erreur: 'Le fichier est vide.' }, 400);
+  if (fichier.size > TAILLE_MAX_FICHIER) return c.json({ erreur: 'Le fichier dépasse 10 Mo.' }, 400);
+
+  const id = crypto.randomUUID();
+  const type = fichier.type || 'application/octet-stream';
+  const ligne = {
+    id,
+    projetId,
+    nom: nettoyerNomFichier(fichier.name),
+    type,
+    taille: fichier.size,
+    creeLe: maintenant(),
+    creePar: c.get('email'),
+  };
+  await c.env.FICHIERS.put(cleFichier(projetId, id), fichier.stream(), { httpMetadata: { contentType: type } });
+  await db.insert(fichiers).values(ligne);
+  return c.json(versFichier(ligne), 201);
+});
+
+app.get('/fichiers/:id', async (c) => {
+  const f = await base(c).query.fichiers.findFirst({ where: eq(fichiers.id, c.req.param('id')) });
+  if (!f) return c.json({ erreur: 'Fichier introuvable.' }, 404);
+  const objet = await c.env.FICHIERS.get(cleFichier(f.projetId, f.id));
+  if (!objet) return c.json({ erreur: 'Fichier introuvable.' }, 404);
+  // Seuls les images et les PDF s'affichent dans le navigateur ; le reste est
+  // téléchargé, pour qu'un fichier déposé ne puisse pas s'exécuter sur le site.
+  const affichable = estAffichable(f.type);
+  const nom = encodeURIComponent(f.nom);
+  const entetes: Record<string, string> = {
+    'Content-Type': affichable ? f.type : 'application/octet-stream',
+    'Content-Disposition': `${affichable ? 'inline' : 'attachment'}; filename*=UTF-8''${nom}`,
+    'Content-Length': String(f.taille),
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'private, max-age=31536000, immutable',
+  };
+  // Le lecteur PDF du navigateur ne s'ouvre pas dans un document « sandbox ».
+  if (f.type !== 'application/pdf') entetes['Content-Security-Policy'] = "default-src 'none'; sandbox";
+  return new Response(objet.body, { headers: entetes });
+});
+
+app.delete('/fichiers/:id', async (c) => {
+  const db = base(c);
+  const f = await db.query.fichiers.findFirst({ where: eq(fichiers.id, c.req.param('id')) });
+  if (!f) return c.body(null, 204);
+  await db.delete(fichiers).where(eq(fichiers.id, f.id));
+  await c.env.FICHIERS.delete(cleFichier(f.projetId, f.id));
   return c.body(null, 204);
 });
 

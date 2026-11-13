@@ -7,8 +7,10 @@ import { ZardInputComponent } from '@/shared/components/input';
 import { ZardSelectImports } from '@/shared/components/select';
 import { ZardSonnerService } from '@/shared/components/sonner';
 import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
-import { Api, Projet, ProjetSaisi, STATUTS, STATUTS_AVEC_CYCLE, Statut, Trimestre, messageErreur } from '../core/api';
+import { Api, Fichier, Projet, ProjetSaisi, STATUTS, STATUTS_AVEC_CYCLE, Statut, Trimestre, messageErreur } from '../core/api';
 import { jourCourt, jourLong, libelleTrimestre } from '../core/dates';
+import { PitchEditeurComponent } from '../pitch/pitch-editeur.component';
+import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
 
 const AUCUN = 'aucun';
 
@@ -21,6 +23,8 @@ const AUCUN = 'aucun';
     ZardInputComponent,
     ...ZardCardImports,
     ...ZardSelectImports,
+    PitchEditeurComponent,
+    PitchRenduComponent,
   ],
   template: `
     <a routerLink="/projets" class="text-sm text-muted-foreground hover:text-foreground">← Tous les projets</a>
@@ -102,12 +106,91 @@ const AUCUN = 'aucun';
           </z-card-content>
         </z-card>
 
-        <z-card>
-          <z-card-header>
-            <z-card-title>Pitch</z-card-title>
-            <z-card-description>Documents joints, liens vers une ressource ou saisie markdown : arrive à la prochaine étape.</z-card-description>
-          </z-card-header>
-        </z-card>
+        @if (projet(); as p) {
+          <z-card>
+            <z-card-header>
+              <z-card-title>Pitch</z-card-title>
+              <z-card-description>Rédigé en markdown, à partir du modèle du guide. Une page maximum.</z-card-description>
+            </z-card-header>
+            <z-card-content class="flex flex-col gap-4">
+              @if (editionPitch()) {
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="inline-flex rounded-lg bg-muted p-1" role="group" aria-label="Mode">
+                    <button
+                      type="button"
+                      class="rounded-md px-3 py-1 text-sm font-medium"
+                      [class]="!apercu() ? 'bg-background shadow-sm' : 'text-muted-foreground'"
+                      [attr.aria-pressed]="!apercu()"
+                      (click)="apercu.set(false)"
+                    >
+                      Écrire
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-md px-3 py-1 text-sm font-medium"
+                      [class]="apercu() ? 'bg-background shadow-sm' : 'text-muted-foreground'"
+                      [attr.aria-pressed]="apercu()"
+                      (click)="apercu.set(true)"
+                    >
+                      Aperçu
+                    </button>
+                  </div>
+                  <p class="text-xs text-muted-foreground">Collez ou glissez une image ou un fichier (10 Mo max).</p>
+                </div>
+                <div [class.hidden]="apercu()">
+                  <app-pitch-editeur
+                    [projetId]="p.id"
+                    [valeur]="brouillon()"
+                    (valeurChange)="brouillon.set($event)"
+                    (fichierAjoute)="fichiers.update((l) => [...l, $event])"
+                  />
+                </div>
+                @if (apercu()) {
+                  <div class="min-h-[420px] rounded-lg border p-4">
+                    <app-pitch-rendu [markdown]="brouillon()" />
+                  </div>
+                }
+                <div class="flex gap-2">
+                  <button z-button [zLoading]="enCoursPitch()" (click)="enregistrerPitch(p)">Enregistrer le pitch</button>
+                  <button z-button zType="outline" (click)="annulerPitch(p)">Annuler</button>
+                </div>
+              } @else {
+                @if (p.pitch.trim()) {
+                  <app-pitch-rendu [markdown]="p.pitch" />
+                } @else {
+                  <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Pas encore de pitch.</p>
+                }
+                <div>
+                  <button z-button zType="outline" (click)="ouvrirPitch(p)">Modifier le pitch</button>
+                </div>
+              }
+
+              @if (fichiers().length) {
+                <div class="flex flex-col gap-2 border-t pt-4">
+                  <h3 class="text-sm font-medium">Fichiers joints</h3>
+                  <ul class="flex flex-col gap-1 text-sm">
+                    @for (f of fichiers(); track f.id) {
+                      <li class="flex items-center justify-between gap-2">
+                        <a [href]="f.url" target="_blank" rel="noopener" class="min-w-0 truncate text-primary hover:underline">{{ f.nom }}</a>
+                        <span class="flex shrink-0 items-center gap-2 text-muted-foreground">
+                          {{ taille(f.taille) }}
+                          <button z-button zType="ghost" zSize="sm" class="text-destructive" (click)="retirerFichier(f)">Retirer</button>
+                        </span>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              }
+            </z-card-content>
+          </z-card>
+        } @else {
+          <z-card>
+            <z-card-header>
+              <z-card-title>Pitch</z-card-title>
+              <z-card-description>À la création, le pitch démarre avec le modèle du guide, prêt à compléter.</z-card-description>
+            </z-card-header>
+          </z-card>
+        }
       </div>
     } @else {
       <p class="mt-3 text-sm text-muted-foreground">Chargement…</p>
@@ -121,6 +204,8 @@ export class ProjetPage {
   private readonly alerte = inject(ZardAlertDialogService);
 
   readonly id = input<string>();
+  /** ?pitch=edition ouvre directement l'éditeur (après la création) */
+  readonly pitch = input<string>();
 
   protected readonly aucun = AUCUN;
   protected readonly statuts = Object.entries(STATUTS) as [Statut, string][];
@@ -136,6 +221,12 @@ export class ProjetPage {
   protected readonly statut = signal<string>('recu');
   protected readonly cycleId = signal<string>(AUCUN);
   protected readonly objectifIds = signal<string[]>([]);
+
+  protected readonly fichiers = signal<Fichier[]>([]);
+  protected readonly editionPitch = signal(false);
+  protected readonly apercu = signal(false);
+  protected readonly brouillon = signal('');
+  protected readonly enCoursPitch = signal(false);
 
   protected readonly cycles = computed(() =>
     this.trimestres().flatMap((t) =>
@@ -169,13 +260,17 @@ export class ProjetPage {
   private async charger(id: string | undefined) {
     this.pret.set(false);
     try {
-      const [ts, moi, p] = await Promise.all([
+      const [ts, moi, p, fs] = await Promise.all([
         this.api.trimestres(),
         this.api.moi(),
         id ? this.api.projet(id) : Promise.resolve(null),
+        id ? this.api.fichiers(id) : Promise.resolve([]),
       ]);
       this.trimestres.set(ts);
+      this.fichiers.set(fs);
       this.remplir(p, moi.email);
+      this.editionPitch.set(false);
+      if (p && this.pitch() === 'edition') this.ouvrirPitch(p);
       this.pret.set(true);
     } catch (e) {
       this.toast.error(messageErreur(e));
@@ -220,7 +315,7 @@ export class ProjetPage {
       } else {
         const p = await this.api.creerProjet(saisie);
         this.toast.success('Projet créé');
-        await this.router.navigate(['/projets', p.id]);
+        await this.router.navigate(['/projets', p.id], { queryParams: { pitch: 'edition' } });
       }
     } catch (e) {
       this.toast.error(messageErreur(e));
@@ -246,5 +341,66 @@ export class ProjetPage {
         }
       },
     });
+  }
+
+  protected ouvrirPitch(p: Projet) {
+    this.brouillon.set(p.pitch);
+    this.apercu.set(false);
+    this.editionPitch.set(true);
+  }
+
+  protected async enregistrerPitch(p: Projet) {
+    this.enCoursPitch.set(true);
+    try {
+      this.projet.set(await this.api.enregistrerPitch(p.id, this.brouillon()));
+      this.editionPitch.set(false);
+      this.toast.success('Pitch enregistré');
+      if (this.pitch()) await this.router.navigate([], { queryParams: {}, replaceUrl: true });
+    } catch (e) {
+      this.toast.error(messageErreur(e));
+    } finally {
+      this.enCoursPitch.set(false);
+    }
+  }
+
+  protected annulerPitch(p: Projet) {
+    const fermer = () => {
+      this.editionPitch.set(false);
+      if (this.pitch()) this.router.navigate([], { queryParams: {}, replaceUrl: true });
+    };
+    if (this.brouillon() === p.pitch) return fermer();
+    this.alerte.confirm({
+      zTitle: 'Abandonner les modifications ?',
+      zDescription: 'Les changements du pitch non enregistrés seront perdus.',
+      zOkText: 'Abandonner',
+      zCancelText: 'Continuer la saisie',
+      zOkDestructive: true,
+      zOnOk: fermer,
+    });
+  }
+
+  protected retirerFichier(f: Fichier) {
+    this.alerte.confirm({
+      zTitle: 'Retirer ce fichier ?',
+      zDescription: `« ${f.nom} » sera supprimé. Pensez à retirer son lien du pitch.`,
+      zOkText: 'Retirer',
+      zCancelText: 'Annuler',
+      zOkDestructive: true,
+      zOnOk: async () => {
+        try {
+          await this.api.supprimerFichier(f.id);
+          this.fichiers.update((l) => l.filter((x) => x.id !== f.id));
+          this.toast.success('Fichier retiré');
+        } catch (e) {
+          this.toast.error(messageErreur(e));
+        }
+      },
+    });
+  }
+
+  protected taille(octets: number) {
+    if (octets < 1024) return `${octets} o`;
+    if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`;
+    return `${(octets / 1024 / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo`;
   }
 }
