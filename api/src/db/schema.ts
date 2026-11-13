@@ -140,3 +140,24 @@ export const announcements = sqliteTable(
   },
   (t) => [index('announcements_cycle_week').on(t.cycleId, t.week)],
 );
+
+/** Every change of status or format of a project, dated in the cycle: the decisions of the week */
+export const projectChanges = sqliteTable(
+  'project_changes',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** Cycle and week running when the change was made; empty outside a cycle */
+    cycleId: text('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
+    week: integer('week'),
+    /** Empty when the project was just created */
+    fromStatus: text('from_status', { enum: PROJECT_STATUSES }),
+    toStatus: text('to_status', { enum: PROJECT_STATUSES }).notNull(),
+    fromFormat: text('from_format', { enum: PROJECT_FORMATS }),
+    toFormat: text('to_format', { enum: PROJECT_FORMATS }).notNull(),
+    ...created,
+  },
+  (t) => [index('project_changes_cycle_week').on(t.cycleId, t.week), index('project_changes_project').on(t.projectId)],
+);

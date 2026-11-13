@@ -6,7 +6,7 @@ import { and, asc, eq, desc, inArray, or } from 'drizzle-orm';
 import { authenticate } from './auth';
 import type { Env } from './env';
 import * as schema from './db/schema';
-import { announcements, attachments, cycles, goals, progressNotes, projectGoals, projects, quarters } from './db/schema';
+import { announcements, attachments, cycles, goals, progressNotes, projectChanges, projectGoals, projects, quarters } from './db/schema';
 import {
   MAX_ATTACHMENT_SIZE,
   MAX_GOALS,
@@ -31,6 +31,7 @@ import {
   suggestedStart,
   toDay,
   weekOf,
+  weekSummary,
 } from './domain';
 
 const app = new Hono<Env>().basePath('/api');
@@ -133,6 +134,10 @@ app.delete('/quarters/:id', async (c) => {
     db.delete(goals).where(eq(goals.quarterId, id)),
     db.delete(progressNotes).where(inArray(progressNotes.cycleId, cycleIds.length ? cycleIds : [''])),
     db.delete(announcements).where(inArray(announcements.cycleId, cycleIds.length ? cycleIds : [''])),
+    db
+      .update(projectChanges)
+      .set({ cycleId: null, week: null })
+      .where(inArray(projectChanges.cycleId, cycleIds.length ? cycleIds : [''])),
     db.delete(cycles).where(eq(cycles.quarterId, id)),
     db.delete(quarters).where(eq(quarters.id, id)),
   ]);
@@ -234,6 +239,7 @@ app.delete('/cycles/:id', async (c) => {
   await db.batch([
     db.delete(progressNotes).where(eq(progressNotes.cycleId, cy.id)),
     db.delete(announcements).where(eq(announcements.cycleId, cy.id)),
+    db.update(projectChanges).set({ cycleId: null, week: null }).where(eq(projectChanges.cycleId, cy.id)),
     db.delete(cycles).where(eq(cycles.id, cy.id)),
   ]);
   return c.json(await loadQuarter(c, cy.quarterId));
@@ -257,6 +263,43 @@ async function fullProjects(db: Db, ids?: string[]) {
       cycle: cy ? { id: cy.id, number: cy.number, quarterId: cy.quarterId, startsOn: cy.startsOn, endsOn: cy.endsOn } : null,
     };
   });
+}
+
+type StatusAndFormat = Pick<typeof projects.$inferSelect, 'status' | 'format'>;
+
+/** Cycle and week running today, to date the decisions */
+async function runningWeek(db: Db) {
+  const today = toDay(new Date());
+  const cycle = currentCycle(await db.select().from(cycles), today);
+  return { cycleId: cycle?.id ?? null, week: cycle ? weekOf(cycle, today) : null };
+}
+
+/**
+ * Records a change of status or format, dated in the running cycle: the decisions of the week.
+ * Returns the inserts to add to a batch: none when nothing changed.
+ */
+function recordChange(
+  db: Db,
+  when: { cycleId: string | null; week: number | null },
+  email: string,
+  projectId: string,
+  before: StatusAndFormat | null,
+  after: StatusAndFormat,
+) {
+  if (before && before.status === after.status && before.format === after.format) return [];
+  return [
+    db.insert(projectChanges).values({
+      id: crypto.randomUUID(),
+      projectId,
+      ...when,
+      fromStatus: before?.status ?? null,
+      toStatus: after.status,
+      fromFormat: before?.format ?? null,
+      toFormat: after.format,
+      createdAt: now(),
+      createdBy: email,
+    }),
+  ];
 }
 
 const projectBody = z.object({
@@ -305,6 +348,7 @@ app.post('/projects', validate('json', projectBody), async (c) => {
   if (error) return c.json({ error }, 400);
   const id = crypto.randomUUID();
   const t = now();
+  const change = recordChange(db, await runningWeek(db), c.get('email'), id, null, p);
   await db.batch([
     db.insert(projects).values({
       id,
@@ -320,6 +364,7 @@ app.post('/projects', validate('json', projectBody), async (c) => {
       updatedAt: t,
     }),
     ...[...new Set(p.goalIds)].map((goalId) => db.insert(projectGoals).values({ projectId: id, goalId })),
+    ...change,
   ]);
   const [created] = await fullProjects(db, [id]);
   return c.json(created, 201);
@@ -333,6 +378,7 @@ app.patch('/projects/:id', validate('json', projectBody), async (c) => {
   const p = withOwner(c.req.valid('json'), existing.owner ?? c.get('email'));
   const error = await validateProject(db, c, p);
   if (error) return c.json({ error }, 400);
+  const change = recordChange(db, await runningWeek(db), c.get('email'), id, existing, p);
   await db.batch([
     db
       .update(projects)
@@ -348,6 +394,7 @@ app.patch('/projects/:id', validate('json', projectBody), async (c) => {
       .where(eq(projects.id, id)),
     db.delete(projectGoals).where(eq(projectGoals.projectId, id)),
     ...[...new Set(p.goalIds)].map((goalId) => db.insert(projectGoals).values({ projectId: id, goalId })),
+    ...change,
   ]);
   const [updated] = await fullProjects(db, [id]);
   return c.json(updated);
@@ -360,6 +407,7 @@ app.delete('/projects/:id', async (c) => {
   await db.batch([
     db.delete(projectGoals).where(eq(projectGoals.projectId, id)),
     db.delete(progressNotes).where(eq(progressNotes.projectId, id)),
+    db.delete(projectChanges).where(eq(projectChanges.projectId, id)),
     db.delete(attachments).where(eq(attachments.projectId, id)),
     db.delete(projects).where(eq(projects.id, id)),
   ]);
@@ -392,7 +440,11 @@ app.patch(
     if (cycleId && cycleId !== p.cycleId && !(await db.query.cycles.findFirst({ where: eq(cycles.id, cycleId) }))) {
       return c.json({ error: 'Ce cycle n’existe plus.' }, 400);
     }
-    await db.update(projects).set({ status, cycleId, updatedAt: now() }).where(eq(projects.id, id));
+    const change = recordChange(db, await runningWeek(db), c.get('email'), id, p, { status, format: p.format });
+    await db.batch([
+      db.update(projects).set({ status, cycleId, updatedAt: now() }).where(eq(projects.id, id)),
+      ...change,
+    ]);
     const [updated] = await fullProjects(db, [id]);
     return c.json(updated);
   },
@@ -407,17 +459,21 @@ app.post('/projects/:id/promote', async (c) => {
   if (p.format !== 'short') return c.json({ error: 'Ce projet est déjà un pari.' }, 400);
   const email = c.get('email');
   const t = now();
-  await db
-    .update(projects)
-    .set({
-      format: 'bet',
-      owner: email,
-      status: 'shaping',
-      cycleId: null,
-      pitch: promotedPitch(p.name, email, t.slice(0, 10), p.pitch),
-      updatedAt: t,
-    })
-    .where(eq(projects.id, id));
+  const change = recordChange(db, await runningWeek(db), email, id, p, { status: 'shaping', format: 'bet' });
+  await db.batch([
+    db
+      .update(projects)
+      .set({
+        format: 'bet',
+        owner: email,
+        status: 'shaping',
+        cycleId: null,
+        pitch: promotedPitch(p.name, email, t.slice(0, 10), p.pitch),
+        updatedAt: t,
+      })
+      .where(eq(projects.id, id)),
+    ...change,
+  ]);
   const [updated] = await fullProjects(db, [id]);
   return c.json(updated);
 });
@@ -532,7 +588,7 @@ app.get('/weekly-review', async (c) => {
   const all = numberCycles(await db.select().from(cycles));
   // The weekly review only covers the current cycle.
   const cycle = currentCycle(all, today);
-  const empty = { bets: [], shortTopics: { pending: [], current: [] }, announcements: [] };
+  const empty = { bets: [], shortTopics: { pending: [], current: [] }, announcements: [], summary: { bets: [], shortTopics: [] } };
   if (!cycle) return c.json({ cycle: null, week: null, next: nextCycle(all, today), ...empty });
 
   const ids = (
@@ -563,14 +619,35 @@ app.get('/weekly-review', async (c) => {
     .from(announcements)
     .where(and(eq(announcements.cycleId, cycle.id), eq(announcements.week, week)))
     .orderBy(asc(announcements.createdAt));
+  const changes = await db
+    .select({
+      projectId: projectChanges.projectId,
+      fromStatus: projectChanges.fromStatus,
+      toStatus: projectChanges.toStatus,
+      fromFormat: projectChanges.fromFormat,
+      toFormat: projectChanges.toFormat,
+      at: projectChanges.createdAt,
+      name: projects.name,
+      requester: projects.requester,
+    })
+    .from(projectChanges)
+    .innerJoin(projects, eq(projects.id, projectChanges.projectId))
+    .where(and(eq(projectChanges.cycleId, cycle.id), eq(projectChanges.week, week)));
+  const cycleBets = found.filter((p) => p.format === 'bet' && inCycle(p)).sort(byStatus);
+  const summary = weekSummary({
+    bets: cycleBets.map((b) => ({
+      id: b.id,
+      name: b.name,
+      note: notes.find((n) => n.projectId === b.id && n.week === week)?.text ?? null,
+    })),
+    changes,
+  });
   return c.json({
     cycle,
     week,
     next: null,
-    bets: found
-      .filter((p) => p.format === 'bet' && inCycle(p))
-      .sort(byStatus)
-      .map((p) => ({ ...p, notes: notes.filter((n) => n.projectId === p.id).sort((a, b) => b.week - a.week) })),
+    summary,
+    bets: cycleBets.map((p) => ({ ...p, notes: notes.filter((n) => n.projectId === p.id).sort((a, b) => b.week - a.week) })),
     shortTopics: {
       // New topics first, then those put aside, oldest first.
       pending: found

@@ -145,8 +145,10 @@ export interface WeeklyReview {
     /** Taken in the current cycle */
     current: Project[];
   };
-  /** Announcements of the current week */
+  /** Announcements of the current week, added by hand */
   announcements: Announcement[];
+  /** Lines built from the review: notes of the bets, decisions of the week */
+  summary: { bets: string[]; shortTopics: string[] };
 }
 
 export const MAX_GOALS = 2;

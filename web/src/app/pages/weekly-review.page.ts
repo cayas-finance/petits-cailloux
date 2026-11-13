@@ -7,7 +7,7 @@ import { ZardInputComponent } from '@/shared/components/input';
 import { ZardTextareaComponent } from '@/shared/components/textarea';
 import { ZardSonnerService } from '@/shared/components/sonner';
 import { Announcement, Api, Bet, Project, Quarter, WeeklyReview, errorMessage } from '../core/api';
-import { announcementsForSlack } from '../core/slack';
+import { slackMessage } from '../core/slack';
 import { longDay, quarterLabel, shortDay } from '../core/dates';
 import { PitchViewComponent } from '../pitch/pitch-view.component';
 import { ProjectPanelComponent } from './project-panel.component';
@@ -250,6 +250,34 @@ import { ProjectPanelComponent } from './project-panel.component';
             <span class="text-sm text-muted-foreground">Ce que toute l’équipe doit savoir cette semaine</span>
           </div>
 
+          <div class="flex flex-col gap-3 rounded-xl border bg-muted/20 px-4 py-3 text-sm">
+            <p class="text-xs text-muted-foreground">Repris automatiquement des notes et des décisions de la semaine.</p>
+            @if (summary().bets.length) {
+              <div>
+                <h3 class="font-medium">Paris</h3>
+                <ul class="mt-1 list-disc pl-5">
+                  @for (line of summary().bets; track $index) {
+                    <li class="whitespace-pre-line">{{ line }}</li>
+                  }
+                </ul>
+              </div>
+            }
+            @if (summary().shortTopics.length) {
+              <div>
+                <h3 class="font-medium">Sujets courts</h3>
+                <ul class="mt-1 list-disc pl-5">
+                  @for (line of summary().shortTopics; track $index) {
+                    <li class="whitespace-pre-line">{{ line }}</li>
+                  }
+                </ul>
+              </div>
+            }
+            @if (!summary().bets.length && !summary().shortTopics.length) {
+              <p class="text-muted-foreground">Rien encore : écrivez une note de suivi ou prenez une décision plus haut.</p>
+            }
+          </div>
+
+          <h3 class="text-sm font-medium">Autres infos</h3>
           @if (announcements().length) {
             <ul class="flex flex-col divide-y rounded-xl border">
               @for (a of announcements(); track a.id) {
@@ -285,7 +313,7 @@ import { ProjectPanelComponent } from './project-panel.component';
               }
             </ul>
           } @else if (!addingAnnouncement()) {
-            <p class="text-sm text-muted-foreground">Aucune info cette semaine.</p>
+            <p class="text-sm text-muted-foreground">Aucune autre info cette semaine.</p>
           }
 
           @if (addingAnnouncement()) {
@@ -309,9 +337,7 @@ import { ProjectPanelComponent } from './project-panel.component';
           } @else {
             <div class="flex flex-wrap gap-2">
               <button z-button zType="outline" (click)="addingAnnouncement.set(true)">Ajouter une info</button>
-              @if (announcements().length) {
-                <button z-button zType="ghost" (click)="copyForSlack()">Copier pour Slack</button>
-              }
+              <button z-button zType="ghost" (click)="copyForSlack()">Copier pour Slack</button>
             </div>
           }
         </section>
@@ -343,6 +369,7 @@ export class WeeklyReviewPage {
   protected readonly shortTopics = computed(() => this.review()?.shortTopics ?? { pending: [], current: [] });
 
   protected readonly announcements = computed(() => this.review()?.announcements ?? []);
+  protected readonly summary = computed(() => this.review()?.summary ?? { bets: [], shortTopics: [] });
   protected readonly addingAnnouncement = signal(false);
   protected readonly newAnnouncement = signal('');
   protected readonly editingAnnouncement = signal<string | null>(null);
@@ -461,6 +488,7 @@ export class WeeklyReviewPage {
       }));
       this.write(b.id, note?.text ?? '');
       this.toast.success(note ? 'Note enregistrée' : 'Note effacée');
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -474,6 +502,7 @@ export class WeeklyReviewPage {
       const updated = await this.api.setStatus(b.id, status);
       this.updateBet(b.id, (x) => ({ ...x, ...updated, notes: x.notes }));
       this.toast.success(status === 'shipped' ? `${b.name} : livré` : `${b.name} : remis en cours`);
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -513,6 +542,7 @@ export class WeeklyReviewPage {
       this.updateShortTopics((s) => ({ ...s, pending: [...s.pending, t] }));
       this.closeForm();
       this.toast.success('Sujet posé');
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -542,6 +572,7 @@ export class WeeklyReviewPage {
         promote: 'devient un pari, en shaping',
       };
       this.toast.success(`${t.name} : ${messages[decision]}`);
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -555,6 +586,7 @@ export class WeeklyReviewPage {
       const updated = await this.api.setStatus(t.id, status);
       this.updateShortTopics((s) => ({ ...s, current: s.current.map((x) => (x.id === t.id ? updated : x)) }));
       this.toast.success(status === 'shipped' ? `${t.name} : livré` : `${t.name} : remis en cours`);
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -622,12 +654,26 @@ export class WeeklyReviewPage {
     const r = this.review();
     if (!r?.cycle) return;
     const name = this.cycleLabels().get(r.cycle.id)?.split(' (')[0] ?? `Cycle ${r.cycle.number}`;
-    const text = announcementsForSlack(`Infos à diffuser · ${name}, semaine ${r.week}`, this.announcements());
+    const text = slackMessage(`Point hebdo · ${name}, semaine ${r.week}`, [
+      { heading: 'Paris', lines: r.summary.bets },
+      { heading: 'Sujets courts', lines: r.summary.shortTopics },
+      { heading: 'Autres infos', lines: this.announcements().map((a) => a.text) },
+    ]);
     try {
       await navigator.clipboard.writeText(text);
       this.toast.success('Copié : prêt à coller dans Slack');
     } catch {
       this.toast.error('Impossible de copier. Sélectionnez le texte à la main.');
+    }
+  }
+
+  /** The summary follows the notes and decisions: reload it after each of them. */
+  private async refreshSummary() {
+    try {
+      const { summary } = await this.api.weeklyReview();
+      this.review.update((r) => (r ? { ...r, summary } : r));
+    } catch {
+      // The summary will be up to date on the next load.
     }
   }
 

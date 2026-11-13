@@ -1,5 +1,14 @@
-/** Announcements of a week as a Slack message: a bold title, then one bullet per announcement. */
-export function announcementsForSlack(title: string, items: { text: string }[]): string {
-  const bullets = items.map((a) => '• ' + a.text.trim().split('\n').join('\n   '));
-  return [`*${title}*`, ...bullets].join('\n');
+/** A section of the Slack message: a bold heading, then one bullet per line. Empty sections are left out. */
+export interface SlackSection {
+  heading: string;
+  lines: string[];
+}
+
+/** The weekly review as a Slack message, using Slack's own formatting (*bold*, bullets). */
+export function slackMessage(title: string, sections: SlackSection[]): string {
+  const parts = [`*${title}*`];
+  for (const s of sections.filter((x) => x.lines.length)) {
+    parts.push('', `*${s.heading}*`, ...s.lines.map((l) => '• ' + l.trim().split('\n').join('\n   ')));
+  }
+  return parts.join('\n');
 }

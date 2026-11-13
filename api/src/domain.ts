@@ -209,3 +209,70 @@ export function currentCycle<T extends { startsOn: Day; endsOn: Day }>(cycles: T
 export function nextCycle<T extends { startsOn: Day }>(cycles: T[], day: Day): T | null {
   return [...cycles].sort((a, b) => a.startsOn.localeCompare(b.startsOn)).find((c) => c.startsOn > day) ?? null;
 }
+
+/* ---------- Week summary ---------- */
+
+export interface StatusChange {
+  /** null when the project was just created */
+  fromStatus: ProjectStatus | null;
+  toStatus: ProjectStatus;
+  fromFormat: ProjectFormat | null;
+  toFormat: ProjectFormat;
+}
+
+/** What a status change means, in a few French words, or null when it is not worth sharing. */
+export function describeChange(e: StatusChange): string | null {
+  if (e.fromStatus === null) return e.toFormat === 'short' ? 'nouveau sujet posé' : null;
+  if (e.fromFormat === 'short' && e.toFormat === 'bet') return 'devient un pari, en shaping';
+  if (e.fromStatus === e.toStatus) return null;
+  const short = e.toFormat === 'short';
+  switch (e.toStatus) {
+    case 'shipped':
+      return 'livré';
+    case 'bet':
+      if (e.fromStatus === 'shipped') return 'remis en cours';
+      return short ? 'pris dans le cycle' : 'misé sur le cycle';
+    case 'waiting':
+      return short ? 'pas maintenant' : 'attend le prochain cycle';
+    case 'dropped':
+      return 'écarté';
+    case 'shaping':
+      return 'passe en shaping';
+    case 'ready':
+      return 'pitch prêt';
+    case 'received':
+      return null;
+  }
+}
+
+/**
+ * Lines shared at the end of the weekly review, built from what was said during it:
+ * the progress notes of the bets, and the week's decisions on bets and short topics.
+ * For each project, only its latest change of the week counts.
+ */
+export function weekSummary(input: {
+  bets: { id: string; name: string; note: string | null }[];
+  changes: (StatusChange & { projectId: string; name: string; requester: string; at: string })[];
+}): { bets: string[]; shortTopics: string[] } {
+  const latest = new Map<string, (typeof input.changes)[number]>();
+  for (const c of [...input.changes].sort((a, b) => a.at.localeCompare(b.at))) latest.set(c.projectId, c);
+
+  const bets: string[] = [];
+  for (const b of input.bets) {
+    const change = latest.get(b.id);
+    const what = change ? describeChange(change) : null;
+    latest.delete(b.id);
+    const note = b.note?.trim();
+    if (note && what) bets.push(`${b.name} (${what}) : ${note}`);
+    else if (note) bets.push(`${b.name} : ${note}`);
+    else if (what) bets.push(`${b.name} : ${what}`);
+  }
+  const shortTopics: string[] = [];
+  for (const c of latest.values()) {
+    const what = describeChange(c);
+    if (!what) continue;
+    const line = c.fromFormat === 'short' ? `${c.name} (demandé par ${c.requester}) : ${what}` : `${c.name} : ${what}`;
+    (c.fromFormat === 'short' || c.toFormat === 'short' ? shortTopics : bets).push(line);
+  }
+  return { bets, shortTopics };
+}
