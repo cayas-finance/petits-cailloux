@@ -1,123 +1,120 @@
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { PROJECT_STATUSES } from '../domain';
 
-const horodatage = {
-  creeLe: text('cree_le').notNull(),
-  creePar: text('cree_par').notNull(),
+const created = {
+  createdAt: text('created_at').notNull(),
+  createdBy: text('created_by').notNull(),
 };
 
-export const trimestres = sqliteTable(
-  'trimestres',
+export const quarters = sqliteTable(
+  'quarters',
   {
-    id: text('id').primaryKey(), // ex. 2026-T4
-    annee: integer('annee').notNull(),
-    numero: integer('numero').notNull(), // 1 à 4
-    debut: text('debut').notNull(),
-    fin: text('fin').notNull(),
-    ...horodatage,
+    id: text('id').primaryKey(), // e.g. 2026-Q4
+    year: integer('year').notNull(),
+    number: integer('number').notNull(), // 1 to 4
+    startsOn: text('starts_on').notNull(),
+    endsOn: text('ends_on').notNull(),
+    ...created,
   },
-  (t) => [uniqueIndex('trimestres_annee_numero').on(t.annee, t.numero)],
+  (t) => [uniqueIndex('quarters_year_number').on(t.year, t.number)],
 );
 
-export const objectifs = sqliteTable(
-  'objectifs',
+export const goals = sqliteTable(
+  'goals',
   {
     id: text('id').primaryKey(),
-    trimestreId: text('trimestre_id')
+    quarterId: text('quarter_id')
       .notNull()
-      .references(() => trimestres.id, { onDelete: 'cascade' }),
-    titre: text('titre').notNull(),
+      .references(() => quarters.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
     description: text('description').notNull().default(''),
-    ...horodatage,
+    ...created,
   },
-  (t) => [index('objectifs_trimestre').on(t.trimestreId)],
+  (t) => [index('goals_quarter').on(t.quarterId)],
 );
 
 export const cycles = sqliteTable(
   'cycles',
   {
     id: text('id').primaryKey(),
-    trimestreId: text('trimestre_id')
+    quarterId: text('quarter_id')
       .notNull()
-      .references(() => trimestres.id, { onDelete: 'cascade' }),
-    debut: text('debut').notNull(),
-    fin: text('fin').notNull(),
-    ...horodatage,
+      .references(() => quarters.id, { onDelete: 'cascade' }),
+    startsOn: text('starts_on').notNull(),
+    endsOn: text('ends_on').notNull(),
+    ...created,
   },
-  (t) => [index('cycles_trimestre').on(t.trimestreId)],
+  (t) => [index('cycles_quarter').on(t.quarterId)],
 );
 
-/** Statuts d'un projet, dans l'ordre du parcours */
-export const STATUTS_PROJET = ['recu', 'shaping', 'pret', 'attente', 'mise', 'livre', 'ecarte'] as const;
-export type StatutProjet = (typeof STATUTS_PROJET)[number];
-
-export const projets = sqliteTable(
-  'projets',
+export const projects = sqliteTable(
+  'projects',
   {
     id: text('id').primaryKey(),
-    nom: text('nom').notNull(),
-    /** Adresse e-mail de la personne qui porte le projet */
+    name: text('name').notNull(),
+    /** E-mail address of the person who owns the project */
     owner: text('owner').notNull(),
-    statut: text('statut', { enum: STATUTS_PROJET }).notNull().default('recu'),
-    /** Cycle dans lequel le projet est pris ; vide tant qu'il n'est pas misé */
+    status: text('status', { enum: PROJECT_STATUSES }).notNull().default('received'),
+    /** Cycle the project is taken into; empty until it is bet on */
     cycleId: text('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
-    /** Pitch rédigé en markdown, initialisé avec le modèle du guide */
+    /** Pitch written in markdown, initialised with the guide's template */
     pitch: text('pitch').notNull().default(''),
-    creeLe: text('cree_le').notNull(),
-    creePar: text('cree_par').notNull(),
-    majLe: text('maj_le').notNull(),
+    ...created,
+    updatedAt: text('updated_at').notNull(),
   },
-  (t) => [index('projets_cycle').on(t.cycleId), index('projets_statut').on(t.statut)],
+  (t) => [index('projects_cycle').on(t.cycleId), index('projects_status').on(t.status)],
 );
 
-/** Images et fichiers joints à un pitch ; le contenu est dans R2 sous projets/<projetId>/<id> */
-export const fichiers = sqliteTable(
-  'fichiers',
+/** A project serves 0, 1 or several goals */
+export const projectGoals = sqliteTable(
+  'project_goals',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+  },
+  (t) => [uniqueIndex('project_goals_pk').on(t.projectId, t.goalId), index('project_goals_goal').on(t.goalId)],
+);
+
+/** Images and files attached to a pitch; content lives in R2 under projects/<projectId>/<id> */
+export const attachments = sqliteTable(
+  'attachments',
   {
     id: text('id').primaryKey(),
-    projetId: text('projet_id')
+    projectId: text('project_id')
       .notNull()
-      .references(() => projets.id, { onDelete: 'cascade' }),
-    nom: text('nom').notNull(),
-    type: text('type').notNull(),
-    taille: integer('taille').notNull(),
-    creeLe: text('cree_le').notNull(),
-    creePar: text('cree_par').notNull(),
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    ...created,
   },
-  (t) => [index('fichiers_projet').on(t.projetId)],
+  (t) => [index('attachments_project').on(t.projectId)],
 );
 
-/** Un projet peut servir 0, 1 ou plusieurs objectifs */
-export const projetObjectifs = sqliteTable(
-  'projet_objectifs',
-  {
-    projetId: text('projet_id')
-      .notNull()
-      .references(() => projets.id, { onDelete: 'cascade' }),
-    objectifId: text('objectif_id')
-      .notNull()
-      .references(() => objectifs.id, { onDelete: 'cascade' }),
-  },
-  (t) => [uniqueIndex('projet_objectifs_pk').on(t.projetId, t.objectifId), index('projet_objectifs_objectif').on(t.objectifId)],
-);
-
-/** Note de suivi d'un pari, une par semaine du cycle (point hebdo) */
-export const notesSuivi = sqliteTable(
-  'notes_suivi',
+/** Progress note on a bet, one per week of the cycle (weekly review) */
+export const progressNotes = sqliteTable(
+  'progress_notes',
   {
     id: text('id').primaryKey(),
-    projetId: text('projet_id')
+    projectId: text('project_id')
       .notNull()
-      .references(() => projets.id, { onDelete: 'cascade' }),
+      .references(() => projects.id, { onDelete: 'cascade' }),
     cycleId: text('cycle_id')
       .notNull()
       .references(() => cycles.id, { onDelete: 'cascade' }),
-    /** Semaine 1 à 4 du cycle */
-    semaine: integer('semaine').notNull(),
-    texte: text('texte').notNull(),
-    creeLe: text('cree_le').notNull(),
-    creePar: text('cree_par').notNull(),
-    majLe: text('maj_le').notNull(),
-    majPar: text('maj_par').notNull(),
+    /** Week 1 to 4 of the cycle */
+    week: integer('week').notNull(),
+    text: text('text').notNull(),
+    ...created,
+    updatedAt: text('updated_at').notNull(),
+    updatedBy: text('updated_by').notNull(),
   },
-  (t) => [uniqueIndex('notes_suivi_semaine').on(t.projetId, t.cycleId, t.semaine), index('notes_suivi_cycle').on(t.cycleId)],
+  (t) => [
+    uniqueIndex('progress_notes_week').on(t.projectId, t.cycleId, t.week),
+    index('progress_notes_cycle').on(t.cycleId),
+  ],
 );

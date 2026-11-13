@@ -1,14 +1,14 @@
 export interface Bindings {
   DB: D1Database;
-  /** Images et fichiers joints aux pitchs */
-  FICHIERS: R2Bucket;
-  /** Domaine de l'équipe Cloudflare Access, ex. cayas.cloudflareaccess.com */
-  ACCESS_EQUIPE?: string;
-  /** Identifiant (AUD) de l'application Access */
+  /** Images and files attached to pitches */
+  ATTACHMENTS: R2Bucket;
+  /** Cloudflare Access team domain, e.g. cayas.cloudflareaccess.com */
+  ACCESS_TEAM_DOMAIN?: string;
+  /** Access application audience (AUD) tag */
   ACCESS_AUD?: string;
-  /** Domaine e-mail autorisé, cayas.fr par défaut */
-  DOMAINE_AUTORISE?: string;
-  /** Développement local uniquement */
+  /** Allowed e-mail domain, cayas.fr by default */
+  ALLOWED_DOMAIN?: string;
+  /** Local development only */
   DEV_EMAIL?: string;
 }
 

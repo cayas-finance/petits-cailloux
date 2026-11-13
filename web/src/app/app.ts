@@ -18,19 +18,19 @@ import { Api } from './core/api';
         }
         <nav class="-mb-px flex w-full gap-1 overflow-x-auto" aria-label="Navigation principale">
           <a
-            routerLink="/trimestres"
+            routerLink="/quarters"
             routerLinkActive="border-primary text-foreground"
             class="border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground"
             >Trimestres et cycles</a
           >
           <a
-            routerLink="/projets"
+            routerLink="/projects"
             routerLinkActive="border-primary text-foreground"
             class="border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground"
             >Projets</a
           >
           <a
-            routerLink="/point-hebdo"
+            routerLink="/weekly-review"
             routerLinkActive="border-primary text-foreground"
             class="border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground"
             >Point hebdo</a
@@ -49,6 +49,6 @@ export class App {
   protected readonly email = signal('');
 
   constructor() {
-    this.api.moi().then((m) => this.email.set(m.email)).catch(() => {});
+    this.api.me().then((m) => this.email.set(m.email)).catch(() => {});
   }
 }

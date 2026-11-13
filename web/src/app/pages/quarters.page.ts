@@ -6,11 +6,11 @@ import { ZardBadgeComponent } from '@/shared/components/badge';
 import { ZardCardImports } from '@/shared/components/card';
 import { ZardSelectImports } from '@/shared/components/select';
 import { ZardSonnerService } from '@/shared/components/sonner';
-import { Api, MAX_CYCLES, MAX_OBJECTIFS, Trimestre, messageErreur } from '../core/api';
-import { estEnCours, jourCourt, libelleTrimestre, trimestreCourant } from '../core/dates';
+import { Api, MAX_CYCLES, MAX_GOALS, Quarter, errorMessage } from '../core/api';
+import { currentQuarter, isRunning, quarterLabel, shortDay } from '../core/dates';
 
 @Component({
-  selector: 'app-trimestres',
+  selector: 'app-quarters',
   imports: [FormsModule, RouterLink, ZardButtonComponent, ZardBadgeComponent, ...ZardCardImports, ...ZardSelectImports],
   template: `
     <div class="flex flex-col gap-6">
@@ -29,10 +29,10 @@ import { estEnCours, jourCourt, libelleTrimestre, trimestreCourant } from '../co
           <z-card-description>On fixe les objectifs juste après la création.</z-card-description>
         </z-card-header>
         <z-card-content>
-          <form class="flex flex-wrap items-end gap-3" (submit)="$event.preventDefault(); creer()">
+          <form class="flex flex-wrap items-end gap-3" (submit)="$event.preventDefault(); create()">
             <label class="flex flex-col gap-1.5 text-sm font-medium">
               Trimestre
-              <z-select class="w-32" [(zValue)]="numero" zPlaceholder="Trimestre">
+              <z-select class="w-32" [(zValue)]="number" zPlaceholder="Trimestre">
                 @for (n of [1, 2, 3, 4]; track n) {
                   <z-select-item [zValue]="'' + n">T{{ n }}</z-select-item>
                 }
@@ -40,49 +40,49 @@ import { estEnCours, jourCourt, libelleTrimestre, trimestreCourant } from '../co
             </label>
             <label class="flex flex-col gap-1.5 text-sm font-medium">
               Année
-              <z-select class="w-32" [(zValue)]="annee" zPlaceholder="Année">
-                @for (a of annees; track a) {
-                  <z-select-item [zValue]="'' + a">{{ a }}</z-select-item>
+              <z-select class="w-32" [(zValue)]="year" zPlaceholder="Année">
+                @for (y of years; track y) {
+                  <z-select-item [zValue]="'' + y">{{ y }}</z-select-item>
                 }
               </z-select>
             </label>
-            <button z-button type="submit" [zLoading]="enCours()">Créer {{ apercu() }}</button>
+            <button z-button type="submit" [zLoading]="saving()">Créer {{ preview() }}</button>
           </form>
         </z-card-content>
       </z-card>
 
-      @if (chargement()) {
+      @if (loading()) {
         <p class="text-sm text-muted-foreground">Chargement…</p>
-      } @else if (!liste().length) {
+      } @else if (!quarters().length) {
         <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
           Aucun trimestre pour l’instant. Créez le premier ci-dessus.
         </p>
       } @else {
         <div class="grid gap-4 sm:grid-cols-2">
-          @for (t of liste(); track t.id) {
-            <a [routerLink]="['/trimestres', t.id]" class="block rounded-xl focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
+          @for (q of quarters(); track q.id) {
+            <a [routerLink]="['/quarters', q.id]" class="block rounded-xl focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
               <z-card class="h-full transition-colors hover:border-primary">
                 <z-card-header>
                   <z-card-title class="flex items-center gap-2">
-                    {{ libelle(t) }}
-                    @if (enCoursT(t)) {
+                    {{ label(q) }}
+                    @if (running(q)) {
                       <z-badge>En cours</z-badge>
                     }
                   </z-card-title>
-                  <z-card-description>{{ court(t.debut) }} → {{ court(t.fin) }}</z-card-description>
+                  <z-card-description>{{ short(q.startsOn) }} → {{ short(q.endsOn) }}</z-card-description>
                 </z-card-header>
                 <z-card-content class="flex flex-col gap-2 text-sm">
-                  @if (t.objectifs.length) {
+                  @if (q.goals.length) {
                     <ul class="list-disc pl-5">
-                      @for (o of t.objectifs; track o.id) {
-                        <li>{{ o.titre }}</li>
+                      @for (g of q.goals; track g.id) {
+                        <li>{{ g.title }}</li>
                       }
                     </ul>
                   } @else {
                     <p class="text-amber-700 dark:text-amber-400">Aucun objectif fixé</p>
                   }
                   <p class="text-muted-foreground">
-                    {{ t.objectifs.length }}/{{ maxObjectifs }} objectifs · {{ t.cycles.length }}/{{ maxCycles }} cycles
+                    {{ q.goals.length }}/{{ maxGoals }} objectifs · {{ q.cycles.length }}/{{ maxCycles }} cycles
                   </p>
                 </z-card-content>
               </z-card>
@@ -93,51 +93,51 @@ import { estEnCours, jourCourt, libelleTrimestre, trimestreCourant } from '../co
     </div>
   `,
 })
-export class TrimestresPage {
+export class QuartersPage {
   private readonly api = inject(Api);
   private readonly router = inject(Router);
   private readonly toast = inject(ZardSonnerService);
 
-  protected readonly maxObjectifs = MAX_OBJECTIFS;
+  protected readonly maxGoals = MAX_GOALS;
   protected readonly maxCycles = MAX_CYCLES;
-  protected readonly liste = signal<Trimestre[]>([]);
-  protected readonly chargement = signal(true);
-  protected readonly enCours = signal(false);
+  protected readonly quarters = signal<Quarter[]>([]);
+  protected readonly loading = signal(true);
+  protected readonly saving = signal(false);
 
-  private readonly courant = trimestreCourant();
-  protected readonly annees = [this.courant.annee - 1, this.courant.annee, this.courant.annee + 1];
-  protected readonly numero = signal(String(this.courant.numero));
-  protected readonly annee = signal(String(this.courant.annee));
-  protected readonly apercu = computed(() => `T${this.numero()} ${this.annee()}`);
+  private readonly current = currentQuarter();
+  protected readonly years = [this.current.year - 1, this.current.year, this.current.year + 1];
+  protected readonly number = signal(String(this.current.number));
+  protected readonly year = signal(String(this.current.year));
+  protected readonly preview = computed(() => `T${this.number()} ${this.year()}`);
 
-  protected readonly libelle = libelleTrimestre;
-  protected readonly court = jourCourt;
-  protected readonly enCoursT = estEnCours;
+  protected readonly label = quarterLabel;
+  protected readonly short = shortDay;
+  protected readonly running = isRunning;
 
   constructor() {
-    this.charger();
+    this.load();
   }
 
-  private async charger() {
+  private async load() {
     try {
-      this.liste.set(await this.api.trimestres());
+      this.quarters.set(await this.api.quarters());
     } catch (e) {
-      this.toast.error(messageErreur(e));
+      this.toast.error(errorMessage(e));
     } finally {
-      this.chargement.set(false);
+      this.loading.set(false);
     }
   }
 
-  protected async creer() {
-    this.enCours.set(true);
+  protected async create() {
+    this.saving.set(true);
     try {
-      const t = await this.api.creerTrimestre(Number(this.annee()), Number(this.numero()));
-      this.toast.success(`${libelleTrimestre(t)} créé`);
-      await this.router.navigate(['/trimestres', t.id]);
+      const q = await this.api.createQuarter(Number(this.year()), Number(this.number()));
+      this.toast.success(`${quarterLabel(q)} créé`);
+      await this.router.navigate(['/quarters', q.id]);
     } catch (e) {
-      this.toast.error(messageErreur(e));
+      this.toast.error(errorMessage(e));
     } finally {
-      this.enCours.set(false);
+      this.saving.set(false);
     }
   }
 }

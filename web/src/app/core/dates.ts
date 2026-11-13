@@ -1,38 +1,39 @@
-// Dates manipulées en AAAA-MM-JJ, comme dans l'API.
+// Dates are handled as YYYY-MM-DD, like in the API. Labels are in French.
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export function aujourdhui(): string {
+export function today(): string {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function trimestreCourant(): { annee: number; numero: number } {
+export function currentQuarter(): { year: number; number: number } {
   const d = new Date();
-  return { annee: d.getFullYear(), numero: Math.floor(d.getMonth() / 3) + 1 };
+  return { year: d.getFullYear(), number: Math.floor(d.getMonth() / 3) + 1 };
 }
 
-export function jourCourt(j: string): string {
-  const [a, m, d] = j.split('-').map(Number);
-  return new Date(a, m - 1, d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+export function shortDay(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
-export function jourLong(j: string): string {
-  const [a, m, d] = j.split('-').map(Number);
-  return new Date(a, m - 1, d).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+export function longDay(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-export function estEnCours(p: { debut: string; fin: string }): boolean {
-  const t = aujourdhui();
-  return p.debut <= t && t <= p.fin;
+export function isRunning(p: { startsOn: string; endsOn: string }): boolean {
+  const t = today();
+  return p.startsOn <= t && t <= p.endsOn;
 }
 
-/** Semaine 1 à 4 d'un cycle en cours, sinon null */
-export function semaineDuCycle(c: { debut: string; fin: string }): number | null {
-  if (!estEnCours(c)) return null;
-  const [a, m, d] = c.debut.split('-').map(Number);
-  const jours = Math.floor((Date.now() - new Date(a, m - 1, d).getTime()) / 86400000);
-  return Math.min(4, Math.floor(jours / 7) + 1);
+/** Week 1 to 4 of a running cycle, otherwise null */
+export function cycleWeek(c: { startsOn: string; endsOn: string }): number | null {
+  if (!isRunning(c)) return null;
+  const [y, m, d] = c.startsOn.split('-').map(Number);
+  const days = Math.floor((Date.now() - new Date(y, m - 1, d).getTime()) / 86400000);
+  return Math.min(4, Math.floor(days / 7) + 1);
 }
 
-export const libelleTrimestre = (t: { annee: number; numero: number }) => `T${t.numero} ${t.annee}`;
+/** "T4 2026": French label of a quarter */
+export const quarterLabel = (q: { year: number; number: number }) => `T${q.number} ${q.year}`;

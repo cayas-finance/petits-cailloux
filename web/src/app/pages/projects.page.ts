@@ -5,12 +5,12 @@ import { ZardBadgeComponent } from '@/shared/components/badge';
 import { ZardSelectImports } from '@/shared/components/select';
 import { ZardTableImports } from '@/shared/components/table';
 import { ZardSonnerService } from '@/shared/components/sonner';
-import { Api, Projet, STATUTS, Statut, Trimestre, messageErreur } from '../core/api';
-import { jourCourt } from '../core/dates';
-import { libelleCycle, typeBadgeStatut } from './projet-libelles';
+import { Api, Project, Quarter, STATUSES, Status, errorMessage } from '../core/api';
+import { shortDay } from '../core/dates';
+import { cycleLabel, statusBadgeType } from './project-labels';
 
 @Component({
-  selector: 'app-projets',
+  selector: 'app-projects',
   imports: [RouterLink, ZardButtonComponent, ZardBadgeComponent, ...ZardSelectImports, ...ZardTableImports],
   template: `
     <div class="flex flex-col gap-6">
@@ -19,24 +19,24 @@ import { libelleCycle, typeBadgeStatut } from './projet-libelles';
           <h1 class="text-xl font-bold">Projets</h1>
           <p class="text-sm text-muted-foreground">Chaque projet a un owner, un statut, et un cycle une fois misé.</p>
         </div>
-        <a z-button routerLink="/projets/nouveau">Nouveau projet</a>
+        <a z-button routerLink="/projects/new">Nouveau projet</a>
       </div>
 
       <label class="flex items-center gap-2 text-sm font-medium">
         Statut
-        <z-select class="w-56" [(zValue)]="filtre" zPlaceholder="Tous">
-          <z-select-item zValue="tous">Tous</z-select-item>
-          @for (s of statuts; track s[0]) {
+        <z-select class="w-56" [(zValue)]="filter" zPlaceholder="Tous">
+          <z-select-item zValue="all">Tous</z-select-item>
+          @for (s of statuses; track s[0]) {
             <z-select-item [zValue]="s[0]">{{ s[1] }}</z-select-item>
           }
         </z-select>
       </label>
 
-      @if (chargement()) {
+      @if (loading()) {
         <p class="text-sm text-muted-foreground">Chargement…</p>
-      } @else if (!visibles().length) {
+      } @else if (!visible().length) {
         <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          @if (liste().length) {
+          @if (projects().length) {
             Aucun projet avec ce statut.
           } @else {
             Aucun projet pour l’instant.
@@ -56,30 +56,30 @@ import { libelleCycle, typeBadgeStatut } from './projet-libelles';
               </tr>
             </thead>
             <tbody z-table-body>
-              @for (p of visibles(); track p.id) {
+              @for (p of visible(); track p.id) {
                 <tr z-table-row>
                   <td z-table-cell class="font-medium">
-                    <a [routerLink]="['/projets', p.id]" class="hover:underline">{{ p.nom }}</a>
+                    <a [routerLink]="['/projects', p.id]" class="hover:underline">{{ p.name }}</a>
                   </td>
                   <td z-table-cell class="text-muted-foreground">{{ p.owner }}</td>
-                  <td z-table-cell><z-badge [zType]="badge(p.statut)">{{ libelleStatut(p.statut) }}</z-badge></td>
+                  <td z-table-cell><z-badge [zType]="badge(p.status)">{{ statusLabel(p.status) }}</z-badge></td>
                   <td z-table-cell>
                     @if (p.cycle) {
                       {{ cycle(p.cycle) }}
-                      <span class="text-muted-foreground"> · {{ court(p.cycle.debut) }}</span>
+                      <span class="text-muted-foreground"> · {{ short(p.cycle.startsOn) }}</span>
                     } @else {
                       <span class="text-muted-foreground">—</span>
                     }
                   </td>
                   <td z-table-cell>
-                    @for (id of p.objectifIds; track id) {
-                      <div>{{ titreObjectif(id) }}</div>
+                    @for (id of p.goalIds; track id) {
+                      <div>{{ goalTitle(id) }}</div>
                     } @empty {
                       <span class="text-muted-foreground">—</span>
                     }
                   </td>
                   <td z-table-cell class="text-right">
-                    <a [routerLink]="['/projets', p.id, 'pitch']" class="text-sm whitespace-nowrap text-primary hover:underline">Lire le pitch</a>
+                    <a [routerLink]="['/projects', p.id, 'pitch']" class="text-sm whitespace-nowrap text-primary hover:underline">Lire le pitch</a>
                   </td>
                 </tr>
               }
@@ -90,46 +90,46 @@ import { libelleCycle, typeBadgeStatut } from './projet-libelles';
     </div>
   `,
 })
-export class ProjetsPage {
+export class ProjectsPage {
   private readonly api = inject(Api);
   private readonly toast = inject(ZardSonnerService);
 
-  protected readonly statuts = Object.entries(STATUTS) as [Statut, string][];
-  protected readonly liste = signal<Projet[]>([]);
-  private readonly trimestres = signal<Trimestre[]>([]);
-  protected readonly chargement = signal(true);
-  protected readonly filtre = signal('tous');
+  protected readonly statuses = Object.entries(STATUSES) as [Status, string][];
+  protected readonly projects = signal<Project[]>([]);
+  private readonly quarters = signal<Quarter[]>([]);
+  protected readonly loading = signal(true);
+  protected readonly filter = signal('all');
 
-  protected readonly visibles = computed(() =>
-    this.filtre() === 'tous' ? this.liste() : this.liste().filter((p) => p.statut === this.filtre()),
+  protected readonly visible = computed(() =>
+    this.filter() === 'all' ? this.projects() : this.projects().filter((p) => p.status === this.filter()),
   );
-  private readonly objectifs = computed(
-    () => new Map(this.trimestres().flatMap((t) => t.objectifs.map((o) => [o.id, o.titre] as const))),
+  private readonly goals = computed(
+    () => new Map(this.quarters().flatMap((q) => q.goals.map((g) => [g.id, g.title] as const))),
   );
 
-  protected readonly court = jourCourt;
-  protected readonly badge = typeBadgeStatut;
-  protected readonly cycle = libelleCycle;
-  protected libelleStatut(s: Statut) {
-    return STATUTS[s];
+  protected readonly short = shortDay;
+  protected readonly badge = statusBadgeType;
+  protected readonly cycle = cycleLabel;
+  protected statusLabel(s: Status) {
+    return STATUSES[s];
   }
-  protected titreObjectif(id: string) {
-    return this.objectifs().get(id) ?? '?';
+  protected goalTitle(id: string) {
+    return this.goals().get(id) ?? '?';
   }
 
   constructor() {
-    this.charger();
+    this.load();
   }
 
-  private async charger() {
+  private async load() {
     try {
-      const [ps, ts] = await Promise.all([this.api.projets(), this.api.trimestres()]);
-      this.liste.set(ps);
-      this.trimestres.set(ts);
+      const [ps, qs] = await Promise.all([this.api.projects(), this.api.quarters()]);
+      this.projects.set(ps);
+      this.quarters.set(qs);
     } catch (e) {
-      this.toast.error(messageErreur(e));
+      this.toast.error(errorMessage(e));
     } finally {
-      this.chargement.set(false);
+      this.loading.set(false);
     }
   }
 }

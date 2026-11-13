@@ -3,532 +3,528 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { and, asc, eq, desc, inArray } from 'drizzle-orm';
-import { authentifier } from './auth';
+import { authenticate } from './auth';
 import type { Env } from './env';
 import * as schema from './db/schema';
-import { STATUTS_PROJET, cycles, fichiers, notesSuivi, objectifs, projetObjectifs, projets, trimestres } from './db/schema';
+import { attachments, cycles, goals, progressNotes, projectGoals, projects, quarters } from './db/schema';
 import {
-  MAX_OBJECTIFS,
-  TAILLE_MAX_FICHIER,
-  TAILLE_MAX_PITCH,
-  TITRE_MODELE,
-  estAffichable,
-  modelePitch,
-  nettoyerNomFichier,
-  retirerLiensFichier,
-  bornesTrimestre,
-  cycleEnCours,
-  prochainCycle,
-  semaineDe,
-  versJour,
-  debutPropose,
-  finCycle,
-  idTrimestre,
-  numeroter,
-  verifierCycle,
-  verifierOwner,
-  verifierProjet,
+  MAX_ATTACHMENT_SIZE,
+  MAX_GOALS,
+  MAX_PITCH_LENGTH,
+  PROJECT_STATUSES,
+  TEMPLATE_TITLE,
+  checkCycle,
+  checkOwner,
+  checkProject,
+  cleanFilename,
+  currentCycle,
+  cycleEnd,
+  isInline,
+  nextCycle,
+  numberCycles,
+  pitchTemplate,
+  quarterBounds,
+  quarterId,
+  removeAttachmentLinks,
+  suggestedStart,
+  toDay,
+  weekOf,
 } from './domain';
 
 const app = new Hono<Env>().basePath('/api');
 
-app.use('*', authentifier);
+app.use('*', authenticate);
 
+// Every error body is { error: "<message in French>" }: the UI shows it as is.
 app.onError((err, c) => {
   console.error(err);
-  return c.json({ erreur: 'Erreur inattendue. Réessayez dans un instant.' }, 500);
+  return c.json({ error: 'Erreur inattendue. Réessayez dans un instant.' }, 500);
 });
 
-const base = (c: { env: Env['Bindings'] }) => drizzle(c.env.DB, { schema });
-const maintenant = () => new Date().toISOString();
+const database = (c: { env: Env['Bindings'] }) => drizzle(c.env.DB, { schema });
+type Db = ReturnType<typeof database>;
+const now = () => new Date().toISOString();
 
-/* Validation : renvoie le premier message d'erreur en français */
-const valider = <T extends z.ZodType>(cible: 'json' | 'param', s: T) =>
-  zValidator(cible, s, (r, c) => {
-    if (!r.success) return c.json({ erreur: r.error.issues[0]?.message ?? 'Données invalides.' }, 400);
+/** Validation: returns the first error message */
+const validate = <T extends z.ZodType>(target: 'json' | 'param', s: T) =>
+  zValidator(target, s, (r, c) => {
+    if (!r.success) return c.json({ error: r.error.issues[0]?.message ?? 'Données invalides.' }, 400);
   });
 
-const titre = z.string().trim().min(1, 'Le titre est obligatoire.').max(200, 'Le titre est trop long.');
+const title = z.string().trim().min(1, 'Le titre est obligatoire.').max(200, 'Le titre est trop long.');
 const description = z.string().trim().max(2000, 'La description est trop longue.');
 
-app.get('/moi', (c) => c.json({ email: c.get('email') }));
+app.get('/me', (c) => c.json({ email: c.get('email') }));
 
-/** Modèle de pitch du guide, pour le formulaire de création */
-app.get('/pitch/modele', (c) =>
-  c.json({ pitch: modelePitch(TITRE_MODELE, c.get('email'), maintenant().slice(0, 10)) }),
-);
+/** The guide's pitch template, for the creation form */
+app.get('/pitch/template', (c) => c.json({ pitch: pitchTemplate(TEMPLATE_TITLE, c.get('email'), now().slice(0, 10)) }));
 
-/* ---------- Trimestres ---------- */
+/* ---------- Quarters ---------- */
 
-async function chargerTrimestre(c: { env: Env['Bindings'] }, id: string) {
-  const db = base(c);
-  const t = await db.query.trimestres.findFirst({ where: eq(trimestres.id, id) });
-  if (!t) return null;
-  const objs = await db.select().from(objectifs).where(eq(objectifs.trimestreId, id)).orderBy(asc(objectifs.creeLe));
-  const cys = await db.select().from(cycles).where(eq(cycles.trimestreId, id));
-  return {
-    ...t,
-    objectifs: objs,
-    cycles: numeroter(cys),
-    prochainDebut: debutPropose(t, cys),
-  };
+async function loadQuarter(c: { env: Env['Bindings'] }, id: string) {
+  const db = database(c);
+  const q = await db.query.quarters.findFirst({ where: eq(quarters.id, id) });
+  if (!q) return null;
+  const qGoals = await db.select().from(goals).where(eq(goals.quarterId, id)).orderBy(asc(goals.createdAt));
+  const qCycles = await db.select().from(cycles).where(eq(cycles.quarterId, id));
+  return { ...q, goals: qGoals, cycles: numberCycles(qCycles), nextStart: suggestedStart(q, qCycles) };
 }
 
-app.get('/trimestres', async (c) => {
-  const db = base(c);
-  const ts = await db.select().from(trimestres).orderBy(desc(trimestres.annee), desc(trimestres.numero));
-  const objs = await db.select().from(objectifs).orderBy(asc(objectifs.creeLe));
-  const cys = await db.select().from(cycles);
+app.get('/quarters', async (c) => {
+  const db = database(c);
+  const qs = await db.select().from(quarters).orderBy(desc(quarters.year), desc(quarters.number));
+  const allGoals = await db.select().from(goals).orderBy(asc(goals.createdAt));
+  const allCycles = await db.select().from(cycles);
   return c.json(
-    ts.map((t) => ({
-      ...t,
-      objectifs: objs.filter((o) => o.trimestreId === t.id),
-      cycles: numeroter(cys.filter((x) => x.trimestreId === t.id)),
+    qs.map((q) => ({
+      ...q,
+      goals: allGoals.filter((g) => g.quarterId === q.id),
+      cycles: numberCycles(allCycles.filter((x) => x.quarterId === q.id)),
     })),
   );
 });
 
-app.get('/trimestres/:id', async (c) => {
-  const t = await chargerTrimestre(c, c.req.param('id'));
-  return t ? c.json(t) : c.json({ erreur: 'Trimestre introuvable.' }, 404);
+app.get('/quarters/:id', async (c) => {
+  const q = await loadQuarter(c, c.req.param('id'));
+  return q ? c.json(q) : c.json({ error: 'Trimestre introuvable.' }, 404);
 });
 
 app.post(
-  '/trimestres',
-  valider(
+  '/quarters',
+  validate(
     'json',
     z.object({
-      annee: z.number().int().min(2024, 'Année invalide.').max(2100, 'Année invalide.'),
-      numero: z.number().int().min(1, 'Trimestre invalide.').max(4, 'Trimestre invalide.'),
+      year: z.number().int().min(2024, 'Année invalide.').max(2100, 'Année invalide.'),
+      number: z.number().int().min(1, 'Trimestre invalide.').max(4, 'Trimestre invalide.'),
     }),
   ),
   async (c) => {
-    const { annee, numero } = c.req.valid('json');
-    const id = idTrimestre(annee, numero);
-    const db = base(c);
-    if (await db.query.trimestres.findFirst({ where: eq(trimestres.id, id) })) {
-      return c.json({ erreur: `Le trimestre T${numero} ${annee} existe déjà.` }, 409);
+    const { year, number } = c.req.valid('json');
+    const id = quarterId(year, number);
+    const db = database(c);
+    if (await db.query.quarters.findFirst({ where: eq(quarters.id, id) })) {
+      return c.json({ error: `Le trimestre T${number} ${year} existe déjà.` }, 409);
     }
-    await db.insert(trimestres).values({
+    await db.insert(quarters).values({
       id,
-      annee,
-      numero,
-      ...bornesTrimestre(annee, numero),
-      creeLe: maintenant(),
-      creePar: c.get('email'),
+      year,
+      number,
+      ...quarterBounds(year, number),
+      createdAt: now(),
+      createdBy: c.get('email'),
     });
-    return c.json(await chargerTrimestre(c, id), 201);
+    return c.json(await loadQuarter(c, id), 201);
   },
 );
 
-app.delete('/trimestres/:id', async (c) => {
+app.delete('/quarters/:id', async (c) => {
   const id = c.req.param('id');
-  const db = base(c);
-  // D1 n'applique pas toujours les cascades : on supprime explicitement, dans un seul lot.
-  const objIds = (await db.select({ id: objectifs.id }).from(objectifs).where(eq(objectifs.trimestreId, id))).map((o) => o.id);
-  const cyIds = (await db.select({ id: cycles.id }).from(cycles).where(eq(cycles.trimestreId, id))).map((x) => x.id);
-  if (cyIds.length && (await db.select({ id: projets.id }).from(projets).where(inArray(projets.cycleId, cyIds))).length) {
-    return c.json({ erreur: 'Des projets sont pris dans les cycles de ce trimestre. Changez-les de cycle avant de le supprimer.' }, 409);
+  const db = database(c);
+  // D1 does not always apply cascades: delete explicitly, in a single batch.
+  const goalIds = (await db.select({ id: goals.id }).from(goals).where(eq(goals.quarterId, id))).map((g) => g.id);
+  const cycleIds = (await db.select({ id: cycles.id }).from(cycles).where(eq(cycles.quarterId, id))).map((x) => x.id);
+  if (cycleIds.length && (await db.select({ id: projects.id }).from(projects).where(inArray(projects.cycleId, cycleIds))).length) {
+    return c.json({ error: 'Des projets sont pris dans les cycles de ce trimestre. Changez-les de cycle avant de le supprimer.' }, 409);
   }
   await db.batch([
-    db.delete(projetObjectifs).where(inArray(projetObjectifs.objectifId, objIds.length ? objIds : [''])),
-    db.delete(objectifs).where(eq(objectifs.trimestreId, id)),
-    db.delete(notesSuivi).where(inArray(notesSuivi.cycleId, cyIds.length ? cyIds : [''])),
-    db.delete(cycles).where(eq(cycles.trimestreId, id)),
-    db.delete(trimestres).where(eq(trimestres.id, id)),
+    db.delete(projectGoals).where(inArray(projectGoals.goalId, goalIds.length ? goalIds : [''])),
+    db.delete(goals).where(eq(goals.quarterId, id)),
+    db.delete(progressNotes).where(inArray(progressNotes.cycleId, cycleIds.length ? cycleIds : [''])),
+    db.delete(cycles).where(eq(cycles.quarterId, id)),
+    db.delete(quarters).where(eq(quarters.id, id)),
   ]);
   return c.body(null, 204);
 });
 
-/* ---------- Objectifs ---------- */
+/* ---------- Goals ---------- */
 
-app.post(
-  '/trimestres/:id/objectifs',
-  valider('json', z.object({ titre, description: description.default('') })),
-  async (c) => {
-    const trimestreId = c.req.param('id');
-    const db = base(c);
-    if (!(await db.query.trimestres.findFirst({ where: eq(trimestres.id, trimestreId) }))) {
-      return c.json({ erreur: 'Trimestre introuvable.' }, 404);
-    }
-    const existants = await db.select().from(objectifs).where(eq(objectifs.trimestreId, trimestreId));
-    if (existants.length >= MAX_OBJECTIFS) {
-      return c.json({ erreur: `Un trimestre porte au plus ${MAX_OBJECTIFS} objectifs.` }, 409);
-    }
-    const body = c.req.valid('json');
-    await db.insert(objectifs).values({
-      id: crypto.randomUUID(),
-      trimestreId,
-      titre: body.titre,
-      description: body.description,
-      creeLe: maintenant(),
-      creePar: c.get('email'),
-    });
-    return c.json(await chargerTrimestre(c, trimestreId), 201);
-  },
-);
+app.post('/quarters/:id/goals', validate('json', z.object({ title, description: description.default('') })), async (c) => {
+  const qId = c.req.param('id');
+  const db = database(c);
+  if (!(await db.query.quarters.findFirst({ where: eq(quarters.id, qId) }))) {
+    return c.json({ error: 'Trimestre introuvable.' }, 404);
+  }
+  const existing = await db.select().from(goals).where(eq(goals.quarterId, qId));
+  if (existing.length >= MAX_GOALS) {
+    return c.json({ error: `Un trimestre porte au plus ${MAX_GOALS} objectifs.` }, 409);
+  }
+  const body = c.req.valid('json');
+  await db.insert(goals).values({
+    id: crypto.randomUUID(),
+    quarterId: qId,
+    title: body.title,
+    description: body.description,
+    createdAt: now(),
+    createdBy: c.get('email'),
+  });
+  return c.json(await loadQuarter(c, qId), 201);
+});
 
-app.patch(
-  '/objectifs/:id',
-  valider('json', z.object({ titre, description })),
-  async (c) => {
-    const db = base(c);
-    const o = await db.query.objectifs.findFirst({ where: eq(objectifs.id, c.req.param('id')) });
-    if (!o) return c.json({ erreur: 'Objectif introuvable.' }, 404);
-    await db.update(objectifs).set(c.req.valid('json')).where(eq(objectifs.id, o.id));
-    return c.json(await chargerTrimestre(c, o.trimestreId));
-  },
-);
+app.patch('/goals/:id', validate('json', z.object({ title, description })), async (c) => {
+  const db = database(c);
+  const g = await db.query.goals.findFirst({ where: eq(goals.id, c.req.param('id')) });
+  if (!g) return c.json({ error: 'Objectif introuvable.' }, 404);
+  await db.update(goals).set(c.req.valid('json')).where(eq(goals.id, g.id));
+  return c.json(await loadQuarter(c, g.quarterId));
+});
 
-app.delete('/objectifs/:id', async (c) => {
-  const db = base(c);
-  const o = await db.query.objectifs.findFirst({ where: eq(objectifs.id, c.req.param('id')) });
-  if (!o) return c.body(null, 204);
-  await db.batch([db.delete(projetObjectifs).where(eq(projetObjectifs.objectifId, o.id)), db.delete(objectifs).where(eq(objectifs.id, o.id))]);
-  return c.json(await chargerTrimestre(c, o.trimestreId));
+app.delete('/goals/:id', async (c) => {
+  const db = database(c);
+  const g = await db.query.goals.findFirst({ where: eq(goals.id, c.req.param('id')) });
+  if (!g) return c.body(null, 204);
+  await db.batch([db.delete(projectGoals).where(eq(projectGoals.goalId, g.id)), db.delete(goals).where(eq(goals.id, g.id))]);
+  return c.json(await loadQuarter(c, g.quarterId));
 });
 
 /* ---------- Cycles ---------- */
 
-const corpsCycle = z.object({ debut: z.string() });
+const cycleBody = z.object({ startsOn: z.string() });
 
-app.post('/trimestres/:id/cycles', valider('json', corpsCycle), async (c) => {
-  const trimestreId = c.req.param('id');
-  const db = base(c);
-  const t = await db.query.trimestres.findFirst({ where: eq(trimestres.id, trimestreId) });
-  if (!t) return c.json({ erreur: 'Trimestre introuvable.' }, 404);
-  const existants = await db.select().from(cycles).where(eq(cycles.trimestreId, trimestreId));
-  const { debut } = c.req.valid('json');
-  const erreur = verifierCycle(t, existants, debut);
-  if (erreur) return c.json({ erreur }, 409);
+app.post('/quarters/:id/cycles', validate('json', cycleBody), async (c) => {
+  const qId = c.req.param('id');
+  const db = database(c);
+  const q = await db.query.quarters.findFirst({ where: eq(quarters.id, qId) });
+  if (!q) return c.json({ error: 'Trimestre introuvable.' }, 404);
+  const existing = await db.select().from(cycles).where(eq(cycles.quarterId, qId));
+  const { startsOn } = c.req.valid('json');
+  const error = checkCycle(q, existing, startsOn);
+  if (error) return c.json({ error }, 409);
   await db.insert(cycles).values({
     id: crypto.randomUUID(),
-    trimestreId,
-    debut,
-    fin: finCycle(debut),
-    creeLe: maintenant(),
-    creePar: c.get('email'),
+    quarterId: qId,
+    startsOn,
+    endsOn: cycleEnd(startsOn),
+    createdAt: now(),
+    createdBy: c.get('email'),
   });
-  return c.json(await chargerTrimestre(c, trimestreId), 201);
+  return c.json(await loadQuarter(c, qId), 201);
 });
 
-app.patch('/cycles/:id', valider('json', corpsCycle), async (c) => {
-  const db = base(c);
+app.patch('/cycles/:id', validate('json', cycleBody), async (c) => {
+  const db = database(c);
   const cy = await db.query.cycles.findFirst({ where: eq(cycles.id, c.req.param('id')) });
-  if (!cy) return c.json({ erreur: 'Cycle introuvable.' }, 404);
-  const t = (await db.query.trimestres.findFirst({ where: eq(trimestres.id, cy.trimestreId) }))!;
-  const existants = await db.select().from(cycles).where(eq(cycles.trimestreId, cy.trimestreId));
-  const { debut } = c.req.valid('json');
-  const erreur = verifierCycle(t, existants, debut, cy.id);
-  if (erreur) return c.json({ erreur }, 409);
+  if (!cy) return c.json({ error: 'Cycle introuvable.' }, 404);
+  const q = (await db.query.quarters.findFirst({ where: eq(quarters.id, cy.quarterId) }))!;
+  const existing = await db.select().from(cycles).where(eq(cycles.quarterId, cy.quarterId));
+  const { startsOn } = c.req.valid('json');
+  const error = checkCycle(q, existing, startsOn, cy.id);
+  if (error) return c.json({ error }, 409);
   await db
     .update(cycles)
-    .set({ debut, fin: finCycle(debut) })
-    .where(and(eq(cycles.id, cy.id), eq(cycles.trimestreId, t.id)));
-  return c.json(await chargerTrimestre(c, t.id));
+    .set({ startsOn, endsOn: cycleEnd(startsOn) })
+    .where(and(eq(cycles.id, cy.id), eq(cycles.quarterId, q.id)));
+  return c.json(await loadQuarter(c, q.id));
 });
 
 app.delete('/cycles/:id', async (c) => {
-  const db = base(c);
+  const db = database(c);
   const cy = await db.query.cycles.findFirst({ where: eq(cycles.id, c.req.param('id')) });
   if (!cy) return c.body(null, 204);
-  const lies = await db.select({ id: projets.id }).from(projets).where(eq(projets.cycleId, cy.id));
-  if (lies.length) {
-    return c.json({ erreur: `Ce cycle porte ${lies.length} projet${lies.length > 1 ? 's' : ''}. ${lies.length > 1 ? "Changez-les" : "Changez-le"} de cycle avant de le supprimer.` }, 409);
+  const linked = await db.select({ id: projects.id }).from(projects).where(eq(projects.cycleId, cy.id));
+  if (linked.length) {
+    const n = linked.length;
+    return c.json(
+      { error: `Ce cycle porte ${n} projet${n > 1 ? 's' : ''}. ${n > 1 ? 'Changez-les' : 'Changez-le'} de cycle avant de le supprimer.` },
+      409,
+    );
   }
-  await db.batch([db.delete(notesSuivi).where(eq(notesSuivi.cycleId, cy.id)), db.delete(cycles).where(eq(cycles.id, cy.id))]);
-  return c.json(await chargerTrimestre(c, cy.trimestreId));
+  await db.batch([db.delete(progressNotes).where(eq(progressNotes.cycleId, cy.id)), db.delete(cycles).where(eq(cycles.id, cy.id))]);
+  return c.json(await loadQuarter(c, cy.quarterId));
 });
 
-/* ---------- Projets ---------- */
+/* ---------- Projects ---------- */
 
-type Base = ReturnType<typeof base>;
-
-async function projetsComplets(db: Base, ids?: string[]) {
+/** Projects with their goal ids and their numbered cycle */
+async function fullProjects(db: Db, ids?: string[]) {
   const ps = ids
-    ? await db.select().from(projets).where(inArray(projets.id, ids))
-    : await db.select().from(projets).orderBy(desc(projets.majLe));
+    ? await db.select().from(projects).where(inArray(projects.id, ids))
+    : await db.select().from(projects).orderBy(desc(projects.updatedAt));
   if (!ps.length) return [];
-  const liens = await db.select().from(projetObjectifs).where(inArray(projetObjectifs.projetId, ps.map((p) => p.id)));
-  const cys = numeroter(await db.select().from(cycles));
+  const links = await db.select().from(projectGoals).where(inArray(projectGoals.projectId, ps.map((p) => p.id)));
+  const allCycles = numberCycles(await db.select().from(cycles));
   return ps.map((p) => {
-    const c = cys.find((x) => x.id === p.cycleId);
+    const cy = allCycles.find((x) => x.id === p.cycleId);
     return {
       ...p,
-      objectifIds: liens.filter((l) => l.projetId === p.id).map((l) => l.objectifId),
-      cycle: c ? { id: c.id, numero: c.numero, trimestreId: c.trimestreId, debut: c.debut, fin: c.fin } : null,
+      goalIds: links.filter((l) => l.projectId === p.id).map((l) => l.goalId),
+      cycle: cy ? { id: cy.id, number: cy.number, quarterId: cy.quarterId, startsOn: cy.startsOn, endsOn: cy.endsOn } : null,
     };
   });
 }
 
-const corpsProjet = z.object({
-  nom: z.string().trim().min(1, 'Le nom est obligatoire.').max(200, 'Le nom est trop long.'),
+const projectBody = z.object({
+  name: z.string().trim().min(1, 'Le nom est obligatoire.').max(200, 'Le nom est trop long.'),
   owner: z.string().trim().max(200).optional(),
-  statut: z.enum(STATUTS_PROJET, { error: 'Statut inconnu.' }).default('recu'),
+  status: z.enum(PROJECT_STATUSES, { error: 'Statut inconnu.' }).default('received'),
   cycleId: z.string().nullable().default(null),
-  objectifIds: z.array(z.string()).max(10).default([]),
-  /** À la création seulement ; sinon le modèle du guide */
-  pitch: z.string().max(TAILLE_MAX_PITCH, 'Le pitch est trop long.').optional(),
+  goalIds: z.array(z.string()).max(10).default([]),
+  /** On creation only; the guide's template otherwise */
+  pitch: z.string().max(MAX_PITCH_LENGTH, 'Le pitch est trop long.').optional(),
 });
 
-/** Vérifie le projet et ses références ; renvoie un message d'erreur ou null */
-async function controlerProjet(db: Base, c: { env: Env['Bindings'] }, p: z.infer<typeof corpsProjet> & { owner: string }) {
-  const e = verifierProjet(p) ?? verifierOwner(p.owner, c.env.DOMAINE_AUTORISE || 'cayas.fr');
-  if (e) return e;
+/** Checks the project and its references; returns an error message or null */
+async function validateProject(db: Db, c: { env: Env['Bindings'] }, p: z.infer<typeof projectBody> & { owner: string }) {
+  const error = checkProject(p) ?? checkOwner(p.owner, c.env.ALLOWED_DOMAIN || 'cayas.fr');
+  if (error) return error;
   if (p.cycleId && !(await db.query.cycles.findFirst({ where: eq(cycles.id, p.cycleId) }))) return 'Ce cycle n’existe plus.';
-  if (p.objectifIds.length) {
-    const trouves = await db.select({ id: objectifs.id }).from(objectifs).where(inArray(objectifs.id, p.objectifIds));
-    if (trouves.length !== new Set(p.objectifIds).size) return 'Un des objectifs n’existe plus.';
+  if (p.goalIds.length) {
+    const found = await db.select({ id: goals.id }).from(goals).where(inArray(goals.id, p.goalIds));
+    if (found.length !== new Set(p.goalIds).size) return 'Un des objectifs n’existe plus.';
   }
   return null;
 }
 
-app.get('/projets', async (c) => c.json(await projetsComplets(base(c))));
+app.get('/projects', async (c) => c.json(await fullProjects(database(c))));
 
-app.get('/projets/:id', async (c) => {
-  const [p] = await projetsComplets(base(c), [c.req.param('id')]);
-  return p ? c.json(p) : c.json({ erreur: 'Projet introuvable.' }, 404);
+app.get('/projects/:id', async (c) => {
+  const [p] = await fullProjects(database(c), [c.req.param('id')]);
+  return p ? c.json(p) : c.json({ error: 'Projet introuvable.' }, 404);
 });
 
-app.post('/projets', valider('json', corpsProjet), async (c) => {
-  const db = base(c);
+app.post('/projects', validate('json', projectBody), async (c) => {
+  const db = database(c);
   const body = c.req.valid('json');
   const p = { ...body, owner: (body.owner || c.get('email')).toLowerCase() };
-  const erreur = await controlerProjet(db, c, p);
-  if (erreur) return c.json({ erreur }, 400);
+  const error = await validateProject(db, c, p);
+  if (error) return c.json({ error }, 400);
   const id = crypto.randomUUID();
-  const t = maintenant();
-  const ids = [...new Set(p.objectifIds)];
+  const t = now();
   await db.batch([
-    db.insert(projets).values({
+    db.insert(projects).values({
       id,
-      nom: p.nom,
+      name: p.name,
       owner: p.owner,
-      statut: p.statut,
+      status: p.status,
       cycleId: p.cycleId,
-      pitch: p.pitch ?? modelePitch(p.nom, p.owner, t.slice(0, 10)),
-      creeLe: t,
-      creePar: c.get('email'),
-      majLe: t,
+      pitch: p.pitch ?? pitchTemplate(p.name, p.owner, t.slice(0, 10)),
+      createdAt: t,
+      createdBy: c.get('email'),
+      updatedAt: t,
     }),
-    ...ids.map((objectifId) => db.insert(projetObjectifs).values({ projetId: id, objectifId })),
+    ...[...new Set(p.goalIds)].map((goalId) => db.insert(projectGoals).values({ projectId: id, goalId })),
   ]);
-  const [cree] = await projetsComplets(db, [id]);
-  return c.json(cree, 201);
+  const [created] = await fullProjects(db, [id]);
+  return c.json(created, 201);
 });
 
-app.patch('/projets/:id', valider('json', corpsProjet), async (c) => {
-  const db = base(c);
+app.patch('/projects/:id', validate('json', projectBody), async (c) => {
+  const db = database(c);
   const id = c.req.param('id');
-  const existant = await db.query.projets.findFirst({ where: eq(projets.id, id) });
-  if (!existant) return c.json({ erreur: 'Projet introuvable.' }, 404);
+  const existing = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+  if (!existing) return c.json({ error: 'Projet introuvable.' }, 404);
   const body = c.req.valid('json');
-  const p = { ...body, owner: (body.owner || existant.owner).toLowerCase() };
-  const erreur = await controlerProjet(db, c, p);
-  if (erreur) return c.json({ erreur }, 400);
-  const ids = [...new Set(p.objectifIds)];
+  const p = { ...body, owner: (body.owner || existing.owner).toLowerCase() };
+  const error = await validateProject(db, c, p);
+  if (error) return c.json({ error }, 400);
   await db.batch([
-    db.update(projets).set({ nom: p.nom, owner: p.owner, statut: p.statut, cycleId: p.cycleId, majLe: maintenant() }).where(eq(projets.id, id)),
-    db.delete(projetObjectifs).where(eq(projetObjectifs.projetId, id)),
-    ...ids.map((objectifId) => db.insert(projetObjectifs).values({ projetId: id, objectifId })),
+    db
+      .update(projects)
+      .set({ name: p.name, owner: p.owner, status: p.status, cycleId: p.cycleId, updatedAt: now() })
+      .where(eq(projects.id, id)),
+    db.delete(projectGoals).where(eq(projectGoals.projectId, id)),
+    ...[...new Set(p.goalIds)].map((goalId) => db.insert(projectGoals).values({ projectId: id, goalId })),
   ]);
-  const [maj] = await projetsComplets(db, [id]);
-  return c.json(maj);
+  const [updated] = await fullProjects(db, [id]);
+  return c.json(updated);
 });
 
-app.delete('/projets/:id', async (c) => {
-  const db = base(c);
+app.delete('/projects/:id', async (c) => {
+  const db = database(c);
   const id = c.req.param('id');
-  const joints = await db.select({ id: fichiers.id }).from(fichiers).where(eq(fichiers.projetId, id));
+  const files = await db.select({ id: attachments.id }).from(attachments).where(eq(attachments.projectId, id));
   await db.batch([
-    db.delete(projetObjectifs).where(eq(projetObjectifs.projetId, id)),
-    db.delete(notesSuivi).where(eq(notesSuivi.projetId, id)),
-    db.delete(fichiers).where(eq(fichiers.projetId, id)),
-    db.delete(projets).where(eq(projets.id, id)),
+    db.delete(projectGoals).where(eq(projectGoals.projectId, id)),
+    db.delete(progressNotes).where(eq(progressNotes.projectId, id)),
+    db.delete(attachments).where(eq(attachments.projectId, id)),
+    db.delete(projects).where(eq(projects.id, id)),
   ]);
-  if (joints.length) await c.env.FICHIERS.delete(joints.map((f) => cleFichier(id, f.id)));
+  if (files.length) await c.env.ATTACHMENTS.delete(files.map((f) => attachmentKey(id, f.id)));
   return c.body(null, 204);
 });
 
-/* ---------- Pitch et fichiers joints ---------- */
+/** Changes only the status of a project (e.g. "Marquer livré" at the weekly review). */
+app.patch(
+  '/projects/:id/status',
+  validate('json', z.object({ status: z.enum(PROJECT_STATUSES, { error: 'Statut inconnu.' }) })),
+  async (c) => {
+    const db = database(c);
+    const id = c.req.param('id');
+    const p = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+    if (!p) return c.json({ error: 'Projet introuvable.' }, 404);
+    const { status } = c.req.valid('json');
+    const error = checkProject({ status, cycleId: p.cycleId });
+    if (error) return c.json({ error }, 400);
+    await db.update(projects).set({ status, updatedAt: now() }).where(eq(projects.id, id));
+    const [updated] = await fullProjects(db, [id]);
+    return c.json(updated);
+  },
+);
 
-const cleFichier = (projetId: string, id: string) => `projets/${projetId}/${id}`;
-const urlFichier = (id: string) => `/api/fichiers/${id}`;
-const versFichier = (f: typeof fichiers.$inferSelect) => ({ ...f, url: urlFichier(f.id) });
+/* ---------- Pitch and attachments ---------- */
+
+const attachmentKey = (projectId: string, id: string) => `projects/${projectId}/${id}`;
+const attachmentUrl = (id: string) => `/api/attachments/${id}`;
+const withUrl = (a: typeof attachments.$inferSelect) => ({ ...a, url: attachmentUrl(a.id) });
 
 app.put(
-  '/projets/:id/pitch',
-  valider('json', z.object({ pitch: z.string().max(TAILLE_MAX_PITCH, 'Le pitch est trop long.') })),
+  '/projects/:id/pitch',
+  validate('json', z.object({ pitch: z.string().max(MAX_PITCH_LENGTH, 'Le pitch est trop long.') })),
   async (c) => {
-    const db = base(c);
+    const db = database(c);
     const id = c.req.param('id');
-    const maj = await db
-      .update(projets)
-      .set({ pitch: c.req.valid('json').pitch, majLe: maintenant() })
-      .where(eq(projets.id, id))
-      .returning({ id: projets.id });
-    if (!maj.length) return c.json({ erreur: 'Projet introuvable.' }, 404);
-    const [p] = await projetsComplets(db, [id]);
+    const updated = await db
+      .update(projects)
+      .set({ pitch: c.req.valid('json').pitch, updatedAt: now() })
+      .where(eq(projects.id, id))
+      .returning({ id: projects.id });
+    if (!updated.length) return c.json({ error: 'Projet introuvable.' }, 404);
+    const [p] = await fullProjects(db, [id]);
     return c.json(p);
   },
 );
 
-app.get('/projets/:id/fichiers', async (c) => {
-  const liste = await base(c)
+app.get('/projects/:id/attachments', async (c) => {
+  const list = await database(c)
     .select()
-    .from(fichiers)
-    .where(eq(fichiers.projetId, c.req.param('id')))
-    .orderBy(asc(fichiers.creeLe));
-  return c.json(liste.map(versFichier));
+    .from(attachments)
+    .where(eq(attachments.projectId, c.req.param('id')))
+    .orderBy(asc(attachments.createdAt));
+  return c.json(list.map(withUrl));
 });
 
-app.post('/projets/:id/fichiers', async (c) => {
-  const db = base(c);
-  const projetId = c.req.param('id');
-  if (!(await db.query.projets.findFirst({ where: eq(projets.id, projetId) }))) {
-    return c.json({ erreur: 'Projet introuvable.' }, 404);
+app.post('/projects/:id/attachments', async (c) => {
+  const db = database(c);
+  const projectId = c.req.param('id');
+  if (!(await db.query.projects.findFirst({ where: eq(projects.id, projectId) }))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
   }
   const form = await c.req.formData().catch(() => null);
-  const fichier = form?.get('fichier');
-  if (!(fichier instanceof File)) return c.json({ erreur: 'Aucun fichier reçu.' }, 400);
-  if (fichier.size === 0) return c.json({ erreur: 'Le fichier est vide.' }, 400);
-  if (fichier.size > TAILLE_MAX_FICHIER) return c.json({ erreur: 'Le fichier dépasse 10 Mo.' }, 400);
+  const file = form?.get('file');
+  if (!(file instanceof File)) return c.json({ error: 'Aucun fichier reçu.' }, 400);
+  if (file.size === 0) return c.json({ error: 'Le fichier est vide.' }, 400);
+  if (file.size > MAX_ATTACHMENT_SIZE) return c.json({ error: 'Le fichier dépasse 10 Mo.' }, 400);
 
   const id = crypto.randomUUID();
-  const type = fichier.type || 'application/octet-stream';
-  const ligne = {
+  const contentType = file.type || 'application/octet-stream';
+  const row = {
     id,
-    projetId,
-    nom: nettoyerNomFichier(fichier.name),
-    type,
-    taille: fichier.size,
-    creeLe: maintenant(),
-    creePar: c.get('email'),
+    projectId,
+    filename: cleanFilename(file.name),
+    contentType,
+    size: file.size,
+    createdAt: now(),
+    createdBy: c.get('email'),
   };
-  await c.env.FICHIERS.put(cleFichier(projetId, id), fichier.stream(), { httpMetadata: { contentType: type } });
-  await db.insert(fichiers).values(ligne);
-  return c.json(versFichier(ligne), 201);
+  await c.env.ATTACHMENTS.put(attachmentKey(projectId, id), file.stream(), { httpMetadata: { contentType } });
+  await db.insert(attachments).values(row);
+  return c.json(withUrl(row), 201);
 });
 
-app.get('/fichiers/:id', async (c) => {
-  const f = await base(c).query.fichiers.findFirst({ where: eq(fichiers.id, c.req.param('id')) });
-  if (!f) return c.json({ erreur: 'Fichier introuvable.' }, 404);
-  const objet = await c.env.FICHIERS.get(cleFichier(f.projetId, f.id));
-  if (!objet) return c.json({ erreur: 'Fichier introuvable.' }, 404);
-  // Seuls les images et les PDF s'affichent dans le navigateur ; le reste est
-  // téléchargé, pour qu'un fichier déposé ne puisse pas s'exécuter sur le site.
-  const affichable = estAffichable(f.type);
-  const nom = encodeURIComponent(f.nom);
-  const entetes: Record<string, string> = {
-    'Content-Type': affichable ? f.type : 'application/octet-stream',
-    'Content-Disposition': `${affichable ? 'inline' : 'attachment'}; filename*=UTF-8''${nom}`,
-    'Content-Length': String(f.taille),
+app.get('/attachments/:id', async (c) => {
+  const a = await database(c).query.attachments.findFirst({ where: eq(attachments.id, c.req.param('id')) });
+  if (!a) return c.json({ error: 'Fichier introuvable.' }, 404);
+  const object = await c.env.ATTACHMENTS.get(attachmentKey(a.projectId, a.id));
+  if (!object) return c.json({ error: 'Fichier introuvable.' }, 404);
+  // Only images and PDFs are shown in the browser; everything else is
+  // downloaded, so an uploaded file can never run on the site.
+  const inline = isInline(a.contentType);
+  const headers: Record<string, string> = {
+    'Content-Type': inline ? a.contentType : 'application/octet-stream',
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(a.filename)}`,
+    'Content-Length': String(a.size),
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'private, max-age=31536000, immutable',
   };
-  // Le lecteur PDF du navigateur ne s'ouvre pas dans un document « sandbox ».
-  if (f.type !== 'application/pdf') entetes['Content-Security-Policy'] = "default-src 'none'; sandbox";
-  return new Response(objet.body, { headers: entetes });
+  // The browser's PDF viewer does not open in a sandboxed document.
+  if (a.contentType !== 'application/pdf') headers['Content-Security-Policy'] = "default-src 'none'; sandbox";
+  return new Response(object.body, { headers });
 });
 
-app.delete('/fichiers/:id', async (c) => {
-  const db = base(c);
-  const f = await db.query.fichiers.findFirst({ where: eq(fichiers.id, c.req.param('id')) });
-  if (!f) return c.json({ erreur: 'Fichier introuvable.' }, 404);
-  // On retire aussi ses liens et images du pitch, et on renvoie le projet à jour.
-  const projet = await db.query.projets.findFirst({ where: eq(projets.id, f.projetId) });
-  const pitch = projet ? retirerLiensFichier(projet.pitch, urlFichier(f.id)) : '';
+app.delete('/attachments/:id', async (c) => {
+  const db = database(c);
+  const a = await db.query.attachments.findFirst({ where: eq(attachments.id, c.req.param('id')) });
+  if (!a) return c.json({ error: 'Fichier introuvable.' }, 404);
+  // Also remove its links and images from the pitch, and return the updated project.
+  const project = await db.query.projects.findFirst({ where: eq(projects.id, a.projectId) });
+  const pitch = project ? removeAttachmentLinks(project.pitch, attachmentUrl(a.id)) : '';
   await db.batch([
-    db.delete(fichiers).where(eq(fichiers.id, f.id)),
-    ...(projet && pitch !== projet.pitch
-      ? [db.update(projets).set({ pitch, majLe: maintenant() }).where(eq(projets.id, projet.id))]
+    db.delete(attachments).where(eq(attachments.id, a.id)),
+    ...(project && pitch !== project.pitch
+      ? [db.update(projects).set({ pitch, updatedAt: now() }).where(eq(projects.id, project.id))]
       : []),
   ]);
-  await c.env.FICHIERS.delete(cleFichier(f.projetId, f.id));
-  const [p] = await projetsComplets(db, [f.projetId]);
+  await c.env.ATTACHMENTS.delete(attachmentKey(a.projectId, a.id));
+  const [p] = await fullProjects(db, [a.projectId]);
   return c.json(p ?? null);
 });
 
-/* ---------- Point hebdo ---------- */
+/* ---------- Weekly review ---------- */
 
-/** Paris du cycle en cours (misés ou livrés), avec leurs notes de suivi par semaine. */
-app.get('/point-hebdo', async (c) => {
-  const db = base(c);
-  const jour = versJour(new Date());
-  const tous = numeroter(await db.select().from(cycles));
-  // Le point hebdo porte uniquement sur le cycle en cours.
-  const cycle = cycleEnCours(tous, jour);
-  if (!cycle) return c.json({ cycle: null, semaine: null, prochain: prochainCycle(tous, jour), paris: [] });
+/** Bets of the current cycle (bet or shipped), with their weekly progress notes. */
+app.get('/weekly-review', async (c) => {
+  const db = database(c);
+  const today = toDay(new Date());
+  const all = numberCycles(await db.select().from(cycles));
+  // The weekly review only covers the current cycle.
+  const cycle = currentCycle(all, today);
+  if (!cycle) return c.json({ cycle: null, week: null, next: nextCycle(all, today), bets: [] });
 
-  const ps = await db
-    .select({ id: projets.id })
-    .from(projets)
-    .where(and(eq(projets.cycleId, cycle.id), inArray(projets.statut, ['mise', 'livre'])));
-  const paris = await projetsComplets(db, ps.map((p) => p.id));
-  const notes = ps.length
-    ? await db.select().from(notesSuivi).where(and(eq(notesSuivi.cycleId, cycle.id), inArray(notesSuivi.projetId, ps.map((p) => p.id))))
+  const ids = (
+    await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.cycleId, cycle.id), inArray(projects.status, ['bet', 'shipped'])))
+  ).map((p) => p.id);
+  const bets = await fullProjects(db, ids);
+  const notes = ids.length
+    ? await db
+        .select()
+        .from(progressNotes)
+        .where(and(eq(progressNotes.cycleId, cycle.id), inArray(progressNotes.projectId, ids)))
     : [];
   return c.json({
     cycle,
-    semaine: semaineDe(cycle, jour),
-    prochain: null,
-    paris: paris
-      .sort((a, b) => (a.statut === b.statut ? a.nom.localeCompare(b.nom, 'fr') : a.statut === 'mise' ? -1 : 1))
-      .map((p) => ({ ...p, notes: notes.filter((n) => n.projetId === p.id).sort((a, b) => b.semaine - a.semaine) })),
+    week: weekOf(cycle, today),
+    next: null,
+    bets: bets
+      .sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name, 'fr') : a.status === 'bet' ? -1 : 1))
+      .map((p) => ({ ...p, notes: notes.filter((n) => n.projectId === p.id).sort((a, b) => b.week - a.week) })),
   });
 });
 
-/** Note de suivi d'un pari pour une semaine du cycle ; un texte vide la supprime. */
+/** Progress note of a bet for one week of the cycle; an empty text deletes it. */
 app.put(
-  '/projets/:id/notes/:cycleId/:semaine',
-  valider('json', z.object({ texte: z.string().trim().max(4000, 'La note est trop longue.') })),
+  '/projects/:id/notes/:cycleId/:week',
+  validate('json', z.object({ text: z.string().trim().max(4000, 'La note est trop longue.') })),
   async (c) => {
-    const db = base(c);
+    const db = database(c);
     const { id, cycleId } = c.req.param();
-    const semaine = Number(c.req.param('semaine'));
-    if (!Number.isInteger(semaine) || semaine < 1 || semaine > 4) return c.json({ erreur: 'Semaine invalide.' }, 400);
-    const p = await db.query.projets.findFirst({ where: eq(projets.id, id) });
-    if (!p) return c.json({ erreur: 'Projet introuvable.' }, 404);
-    if (p.cycleId !== cycleId) return c.json({ erreur: 'Ce projet n’est pas pris dans ce cycle.' }, 400);
+    const week = Number(c.req.param('week'));
+    if (!Number.isInteger(week) || week < 1 || week > 4) return c.json({ error: 'Semaine invalide.' }, 400);
+    const p = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+    if (!p) return c.json({ error: 'Projet introuvable.' }, 404);
+    if (p.cycleId !== cycleId) return c.json({ error: 'Ce projet n’est pas pris dans ce cycle.' }, 400);
 
-    const { texte } = c.req.valid('json');
-    const cle = and(eq(notesSuivi.projetId, id), eq(notesSuivi.cycleId, cycleId), eq(notesSuivi.semaine, semaine));
-    if (!texte) {
-      await db.delete(notesSuivi).where(cle);
+    const { text } = c.req.valid('json');
+    const key = and(eq(progressNotes.projectId, id), eq(progressNotes.cycleId, cycleId), eq(progressNotes.week, week));
+    if (!text) {
+      await db.delete(progressNotes).where(key);
       return c.json(null);
     }
-    const t = maintenant();
+    const t = now();
     const email = c.get('email');
     const [note] = await db
-      .insert(notesSuivi)
-      .values({ id: crypto.randomUUID(), projetId: id, cycleId, semaine, texte, creeLe: t, creePar: email, majLe: t, majPar: email })
+      .insert(progressNotes)
+      .values({ id: crypto.randomUUID(), projectId: id, cycleId, week, text, createdAt: t, createdBy: email, updatedAt: t, updatedBy: email })
       .onConflictDoUpdate({
-        target: [notesSuivi.projetId, notesSuivi.cycleId, notesSuivi.semaine],
-        set: { texte, majLe: t, majPar: email },
+        target: [progressNotes.projectId, progressNotes.cycleId, progressNotes.week],
+        set: { text, updatedAt: t, updatedBy: email },
       })
       .returning();
     return c.json(note);
   },
 );
 
-/** Change seulement le statut d'un projet (ex. « Marquer livré » au point hebdo). */
-app.patch(
-  '/projets/:id/statut',
-  valider('json', z.object({ statut: z.enum(STATUTS_PROJET, { error: 'Statut inconnu.' }) })),
-  async (c) => {
-    const db = base(c);
-    const id = c.req.param('id');
-    const p = await db.query.projets.findFirst({ where: eq(projets.id, id) });
-    if (!p) return c.json({ erreur: 'Projet introuvable.' }, 404);
-    const { statut } = c.req.valid('json');
-    const erreur = verifierProjet({ statut, cycleId: p.cycleId });
-    if (erreur) return c.json({ erreur }, 400);
-    await db.update(projets).set({ statut, majLe: maintenant() }).where(eq(projets.id, id));
-    const [maj] = await projetsComplets(db, [id]);
-    return c.json(maj);
-  },
-);
-
-app.all('*', (c) => c.json({ erreur: 'Route inconnue.' }, 404));
+app.all('*', (c) => c.json({ error: 'Route inconnue.' }, 404));
 
 export default app;

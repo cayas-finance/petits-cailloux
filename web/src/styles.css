@@ -139,62 +139,62 @@
 }
 /* Rendu d'un pitch markdown */
 @layer components {
-  .pitch-rendu {
+  .pitch-content {
     @apply text-sm leading-relaxed break-words;
   }
-  .pitch-rendu > :first-child {
+  .pitch-content > :first-child {
     @apply mt-0;
   }
-  .pitch-rendu h1 {
+  .pitch-content h1 {
     @apply mt-6 mb-3 text-xl font-bold;
   }
-  .pitch-rendu h2 {
+  .pitch-content h2 {
     @apply mt-6 mb-2 border-b pb-1 text-base font-semibold;
   }
-  .pitch-rendu h3 {
+  .pitch-content h3 {
     @apply mt-4 mb-2 font-semibold;
   }
-  .pitch-rendu p {
+  .pitch-content p {
     @apply my-2;
   }
-  .pitch-rendu ul {
+  .pitch-content ul {
     @apply my-2 list-disc pl-5;
   }
-  .pitch-rendu ol {
+  .pitch-content ol {
     @apply my-2 list-decimal pl-5;
   }
-  .pitch-rendu li {
+  .pitch-content li {
     @apply my-0.5;
   }
-  .pitch-rendu a {
+  .pitch-content a {
     @apply text-primary underline underline-offset-4;
   }
-  .pitch-rendu img {
+  .pitch-content img {
     @apply my-3 max-h-[480px] max-w-full rounded-md border;
   }
-  .pitch-rendu blockquote {
+  .pitch-content blockquote {
     @apply my-3 border-l-4 pl-3 text-muted-foreground;
   }
-  .pitch-rendu code {
+  .pitch-content code {
     @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
   }
-  .pitch-rendu pre {
+  .pitch-content pre {
     @apply my-3 overflow-x-auto rounded-md bg-muted p-3;
   }
-  .pitch-rendu pre code {
+  .pitch-content pre code {
     @apply bg-transparent p-0;
   }
-  .pitch-rendu table {
+  .pitch-content table {
     @apply my-3 w-full border-collapse text-left;
   }
-  .pitch-rendu th,
-  .pitch-rendu td {
+  .pitch-content th,
+  .pitch-content td {
     @apply border px-2 py-1;
   }
-  .pitch-rendu hr {
+  .pitch-content hr {
     @apply my-4;
   }
-  .pitch-rendu input[type='checkbox'] {
+  .pitch-content input[type='checkbox'] {
     @apply mr-1.5 align-middle accent-primary;
   }
 }
