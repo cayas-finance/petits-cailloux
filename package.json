@@ -1,7 +1,10 @@
 {
   "name": "petits-cailloux",
   "private": true,
-  "workspaces": ["web", "api"],
+  "workspaces": [
+    "web",
+    "api"
+  ],
   "scripts": {
     "build": "npm run build -w web",
     "dev:web": "npm start -w web",
@@ -14,5 +17,11 @@
   },
   "devDependencies": {
     "wrangler": "^4.161.0"
+  },
+  "engines": {
+    "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+  },
+  "volta": {
+    "node": "24.22.3"
   }
 }
