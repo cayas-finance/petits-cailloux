@@ -43,3 +43,20 @@ describe('cycles', () => {
     ]);
   });
 });
+
+import { verifierOwner, verifierProjet } from '../src/domain';
+
+describe('projets', () => {
+  it('exige un cycle pour un projet misé ou livré', () => {
+    expect(verifierProjet({ statut: 'mise', cycleId: null })).toMatch(/cycle/);
+    expect(verifierProjet({ statut: 'livre', cycleId: null })).toMatch(/cycle/);
+    expect(verifierProjet({ statut: 'mise', cycleId: 'c1' })).toBeNull();
+    expect(verifierProjet({ statut: 'recu', cycleId: null })).toBeNull();
+  });
+  it('n’accepte qu’un owner du domaine', () => {
+    expect(verifierOwner('marine@cayas.fr', 'cayas.fr')).toBeNull();
+    expect(verifierOwner('Marine@Cayas.fr ', 'cayas.fr')).toBeNull();
+    expect(verifierOwner('marine@gmail.com', 'cayas.fr')).toMatch(/@cayas.fr/);
+    expect(verifierOwner('marine', 'cayas.fr')).toMatch(/adresse/);
+  });
+});

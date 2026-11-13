@@ -31,6 +31,39 @@ export interface Trimestre {
   prochainDebut?: string;
 }
 
+export const STATUTS = {
+  recu: 'Reçu',
+  shaping: 'En shaping',
+  pret: 'Pitch prêt',
+  attente: 'Attend prochain cycle',
+  mise: 'Misé',
+  livre: 'Livré',
+  ecarte: 'Écarté',
+} as const;
+export type Statut = keyof typeof STATUTS;
+export const STATUTS_AVEC_CYCLE: Statut[] = ['mise', 'livre'];
+
+export interface Projet {
+  id: string;
+  nom: string;
+  owner: string;
+  statut: Statut;
+  cycleId: string | null;
+  objectifIds: string[];
+  cycle: { id: string; numero: number; trimestreId: string; debut: string; fin: string } | null;
+  creeLe: string;
+  creePar: string;
+  majLe: string;
+}
+
+export interface ProjetSaisi {
+  nom: string;
+  owner: string;
+  statut: Statut;
+  cycleId: string | null;
+  objectifIds: string[];
+}
+
 export const MAX_OBJECTIFS = 2;
 export const MAX_CYCLES = 3;
 
@@ -79,5 +112,21 @@ export class Api {
   }
   supprimerCycle(id: string) {
     return firstValueFrom(this.http.delete<Trimestre>(`/api/cycles/${id}`));
+  }
+
+  projets() {
+    return firstValueFrom(this.http.get<Projet[]>('/api/projets'));
+  }
+  projet(id: string) {
+    return firstValueFrom(this.http.get<Projet>(`/api/projets/${id}`));
+  }
+  creerProjet(p: ProjetSaisi) {
+    return firstValueFrom(this.http.post<Projet>('/api/projets', p));
+  }
+  modifierProjet(id: string, p: ProjetSaisi) {
+    return firstValueFrom(this.http.patch<Projet>(`/api/projets/${id}`, p));
+  }
+  supprimerProjet(id: string) {
+    return firstValueFrom(this.http.delete<void>(`/api/projets/${id}`));
   }
 }

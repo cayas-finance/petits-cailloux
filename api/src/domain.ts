@@ -89,3 +89,33 @@ export function verifierCycle(
 export function numeroter<T extends { debut: Jour }>(cycles: T[]): (T & { numero: number })[] {
   return [...cycles].sort((a, b) => a.debut.localeCompare(b.debut)).map((c, i) => ({ ...c, numero: i + 1 }));
 }
+
+/* ---------- Projets ---------- */
+
+export const LIBELLES_STATUT = {
+  recu: 'Reçu',
+  shaping: 'En shaping',
+  pret: 'Pitch prêt',
+  attente: 'Attend prochain cycle',
+  mise: 'Misé',
+  livre: 'Livré',
+  ecarte: 'Écarté',
+} as const;
+
+/** Statuts pour lesquels le projet doit être rattaché à un cycle */
+export const STATUTS_AVEC_CYCLE: readonly string[] = ['mise', 'livre'];
+
+export function verifierProjet(p: { statut: string; cycleId: string | null }): string | null {
+  if (STATUTS_AVEC_CYCLE.includes(p.statut) && !p.cycleId) {
+    return 'Un projet misé ou livré doit être rattaché à un cycle.';
+  }
+  return null;
+}
+
+/** L'owner est une adresse du domaine autorisé */
+export function verifierOwner(owner: string, domaine: string): string | null {
+  const o = owner.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+$/.test(o)) return 'L’owner doit être une adresse e-mail.';
+  if (!o.endsWith('@' + domaine.toLowerCase())) return `L’owner doit avoir une adresse @${domaine}.`;
+  return null;
+}
