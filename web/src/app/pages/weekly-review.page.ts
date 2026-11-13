@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ZardButtonComponent } from '@/shared/components/button';
@@ -157,23 +157,32 @@ import { ProjectPanelComponent } from './project-panel.component';
             <span class="text-sm text-muted-foreground">Posés en direct, décidés tout de suite, sans shaping</span>
           </div>
 
-          <form class="flex flex-col gap-3 rounded-xl border p-4" (submit)="$event.preventDefault(); addShortTopic()">
-            <div class="grid gap-3 sm:grid-cols-2">
-              <label class="flex flex-col gap-1.5 text-sm font-medium">
-                Titre
-                <input z-input name="title" [(ngModel)]="newTitle" maxlength="200" placeholder="Ex. Export CSV des écritures" />
-              </label>
-              <label class="flex flex-col gap-1.5 text-sm font-medium">
-                Demandeur
-                <input z-input name="requester" [(ngModel)]="newRequester" maxlength="200" placeholder="Ex. Nico, pour le client Dupont" />
-              </label>
+          @if (!adding()) {
+            <div>
+              <button z-button zType="outline" (click)="openForm()">Ajouter un sujet court</button>
             </div>
-            <label class="flex flex-col gap-1.5 text-sm font-medium">
-              Problème
-              <textarea z-textarea name="problem" rows="2" [(ngModel)]="newProblem" placeholder="La situation vécue, en quelques lignes"></textarea>
-            </label>
-            <div><button z-button type="submit" [zLoading]="busy() === 'new'">Poser le sujet</button></div>
-          </form>
+          } @else {
+            <form class="flex flex-col gap-3 rounded-xl border p-4" (submit)="$event.preventDefault(); addShortTopic()" (keydown.escape)="closeForm()">
+              <div class="grid gap-3 sm:grid-cols-2">
+                <label class="flex flex-col gap-1.5 text-sm font-medium">
+                  Titre
+                  <input z-input #titleInput name="title" [(ngModel)]="newTitle" maxlength="200" placeholder="Ex. Export CSV des écritures" />
+                </label>
+                <label class="flex flex-col gap-1.5 text-sm font-medium">
+                  Demandeur
+                  <input z-input name="requester" [(ngModel)]="newRequester" maxlength="200" placeholder="Ex. Nico, pour le client Dupont" />
+                </label>
+              </div>
+              <label class="flex flex-col gap-1.5 text-sm font-medium">
+                Problème
+                <textarea z-textarea name="problem" rows="2" [(ngModel)]="newProblem" placeholder="La situation vécue, en quelques lignes"></textarea>
+              </label>
+              <div class="flex gap-2">
+                <button z-button type="submit" [zLoading]="busy() === 'new'">Poser le sujet</button>
+                <button z-button type="button" zType="ghost" (click)="closeForm()">Annuler</button>
+              </div>
+            </form>
+          }
 
           @if (shortTopics().pending.length) {
             <h3 class="text-sm font-medium">À décider</h3>
@@ -260,6 +269,9 @@ export class WeeklyReviewPage {
   protected readonly bets = computed(() => this.review()?.bets ?? []);
   protected readonly shortTopics = computed(() => this.review()?.shortTopics ?? { pending: [], current: [] });
 
+  /** The short topic form is folded until someone adds a topic */
+  protected readonly adding = signal(false);
+  private readonly titleInput = viewChild('titleInput', { read: ElementRef<HTMLInputElement> });
   protected readonly newTitle = signal('');
   protected readonly newRequester = signal('');
   protected readonly newProblem = signal('');
@@ -288,6 +300,8 @@ export class WeeklyReviewPage {
   );
 
   constructor() {
+    // Focus the title as soon as the short topic form unfolds.
+    effect(() => this.titleInput()?.nativeElement.focus());
     this.api.quarters().then((qs) => this.quarters.set(qs)).catch(() => {});
     this.load();
   }
@@ -384,6 +398,17 @@ export class WeeklyReviewPage {
     }
   }
 
+  protected openForm() {
+    this.adding.set(true);
+  }
+
+  protected closeForm() {
+    this.adding.set(false);
+    this.newTitle.set('');
+    this.newRequester.set('');
+    this.newProblem.set('');
+  }
+
   protected async addShortTopic() {
     const name = this.newTitle().trim();
     const requester = this.newRequester().trim();
@@ -403,9 +428,7 @@ export class WeeklyReviewPage {
         pitch: this.newProblem().trim(),
       });
       this.updateShortTopics((s) => ({ ...s, pending: [...s.pending, t] }));
-      this.newTitle.set('');
-      this.newRequester.set('');
-      this.newProblem.set('');
+      this.closeForm();
       this.toast.success('Sujet posé');
     } catch (e) {
       this.toast.error(errorMessage(e));
