@@ -27,8 +27,7 @@ Node 22.22.3+, 24.15+ ou 26 (exigence d'Angular). La version est épinglée pour
 ```bash
 npm ci
 cp .dev.vars.example .dev.vars        # DEV_EMAIL : se faire passer pour un utilisateur, en local seulement
-npm run db:migrate:local
-npm run build && npx wrangler dev     # http://localhost:8787
+npm start                             # migrations locales, build, puis http://localhost:8787
 ```
 
 Pour travailler l'interface avec rechargement à chaud : `npx wrangler dev` dans un terminal, `npm run dev:web` dans un autre (http://localhost:4200, l'API est relayée vers le port 8787).
