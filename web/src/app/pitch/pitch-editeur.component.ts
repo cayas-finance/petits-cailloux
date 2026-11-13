@@ -64,7 +64,8 @@ export class PitchEditeurComponent implements OnDestroy {
   private readonly hote = viewChild.required<ElementRef<HTMLElement>>('hote');
   private editeur?: OverTypeInstance;
 
-  readonly projetId = input.required<string>();
+  /** Sans projet (formulaire de création), on ne peut pas encore joindre de fichier. */
+  readonly projetId = input<string>();
   readonly valeur = input.required<string>();
   readonly valeurChange = output<string>();
   readonly fichierAjoute = output<Fichier>();
@@ -96,12 +97,11 @@ export class PitchEditeurComponent implements OnDestroy {
           bouton('orderedList', 'Liste numérotée'),
           bouton('taskList', 'Liste de cases à cocher'),
           bouton('quote', 'Citation'),
-          toolbarButtons.separator,
-          bouton('upload', 'Joindre une image ou un fichier'),
+          ...(this.projetId() ? [toolbarButtons.separator, bouton('upload', 'Joindre une image ou un fichier')] : []),
         ],
         textareaProps: { 'aria-label': 'Pitch en markdown' },
         fileUpload: {
-          enabled: true,
+          enabled: !!this.projetId(),
           maxSize: TAILLE_MAX_FICHIER,
           onInsertFile: (f) => this.envoyer(f),
         },
@@ -115,7 +115,7 @@ export class PitchEditeurComponent implements OnDestroy {
     const liens = await Promise.all(
       liste.map(async (fichier) => {
         try {
-          const joint = await this.api.envoyerFichier(this.projetId(), fichier);
+          const joint = await this.api.envoyerFichier(this.projetId()!, fichier);
           this.fichierAjoute.emit(joint);
           return lienMarkdown(joint);
         } catch (e) {
@@ -125,6 +125,11 @@ export class PitchEditeurComponent implements OnDestroy {
       }),
     );
     return Array.isArray(f) ? liens : liens[0];
+  }
+
+  /** Remplace le texte (ex. titre du modèle mis à jour avec le nom du projet). */
+  remplacer(valeur: string) {
+    if (this.editeur && this.editeur.getValue() !== valeur) this.editeur.setValue(valeur);
   }
 
   ngOnDestroy() {

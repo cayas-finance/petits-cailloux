@@ -11,6 +11,7 @@ import {
   MAX_OBJECTIFS,
   TAILLE_MAX_FICHIER,
   TAILLE_MAX_PITCH,
+  TITRE_MODELE,
   estAffichable,
   modelePitch,
   nettoyerNomFichier,
@@ -46,6 +47,11 @@ const titre = z.string().trim().min(1, 'Le titre est obligatoire.').max(200, 'Le
 const description = z.string().trim().max(2000, 'La description est trop longue.');
 
 app.get('/moi', (c) => c.json({ email: c.get('email') }));
+
+/** Modèle de pitch du guide, pour le formulaire de création */
+app.get('/pitch/modele', (c) =>
+  c.json({ pitch: modelePitch(TITRE_MODELE, c.get('email'), maintenant().slice(0, 10)) }),
+);
 
 /* ---------- Trimestres ---------- */
 
@@ -255,6 +261,8 @@ const corpsProjet = z.object({
   statut: z.enum(STATUTS_PROJET, { error: 'Statut inconnu.' }).default('recu'),
   cycleId: z.string().nullable().default(null),
   objectifIds: z.array(z.string()).max(10).default([]),
+  /** À la création seulement ; sinon le modèle du guide */
+  pitch: z.string().max(TAILLE_MAX_PITCH, 'Le pitch est trop long.').optional(),
 });
 
 /** Vérifie le projet et ses références ; renvoie un message d'erreur ou null */
@@ -292,7 +300,7 @@ app.post('/projets', valider('json', corpsProjet), async (c) => {
       owner: p.owner,
       statut: p.statut,
       cycleId: p.cycleId,
-      pitch: modelePitch(p.nom, p.owner, t.slice(0, 10)),
+      pitch: p.pitch ?? modelePitch(p.nom, p.owner, t.slice(0, 10)),
       creeLe: t,
       creePar: c.get('email'),
       majLe: t,

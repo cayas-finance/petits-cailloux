@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ZardButtonComponent } from '@/shared/components/button';
@@ -96,12 +96,11 @@ const AUCUN = 'aucun';
                 }
               </fieldset>
 
-              <div class="flex gap-2">
-                <button z-button type="submit" [zLoading]="enCours()">{{ projet() ? 'Enregistrer' : 'Créer le projet' }}</button>
-                @if (!projet()) {
-                  <a z-button zType="outline" routerLink="/projets">Annuler</a>
-                }
-              </div>
+              @if (projet()) {
+                <div>
+                  <button z-button type="submit" [zLoading]="enCours()">Enregistrer</button>
+                </div>
+              }
             </form>
           </z-card-content>
         </z-card>
@@ -187,9 +186,20 @@ const AUCUN = 'aucun';
           <z-card>
             <z-card-header>
               <z-card-title>Pitch</z-card-title>
-              <z-card-description>À la création, le pitch démarre avec le modèle du guide, prêt à compléter.</z-card-description>
+              <z-card-description>
+                Le modèle du guide, à compléter maintenant ou plus tard. Les images et fichiers pourront être joints une fois le projet créé.
+              </z-card-description>
             </z-card-header>
+            <z-card-content>
+              @if (brouillonPret()) {
+                <app-pitch-editeur #editeurCreation [valeur]="brouillon()" (valeurChange)="brouillon.set($event)" />
+              }
+            </z-card-content>
           </z-card>
+          <div class="flex gap-2">
+            <button z-button [zLoading]="enCours()" (click)="enregistrer()">Créer le projet</button>
+            <a z-button zType="outline" routerLink="/projets">Annuler</a>
+          </div>
         }
       </div>
     } @else {
@@ -227,6 +237,10 @@ export class ProjetPage {
   protected readonly apercu = signal(false);
   protected readonly brouillon = signal('');
   protected readonly enCoursPitch = signal(false);
+  /** Création : le modèle est chargé et son titre suit le nom du projet */
+  protected readonly brouillonPret = signal(false);
+  private titreModele = '';
+  private readonly editeurCreation = viewChild<PitchEditeurComponent>('editeurCreation');
 
   protected readonly cycles = computed(() =>
     this.trimestres().flatMap((t) =>
@@ -255,17 +269,36 @@ export class ProjetPage {
     effect(() => {
       this.charger(this.id());
     });
+    // À la création, le titre du modèle suit le nom saisi tant qu'on ne l'a pas modifié.
+    effect(() => {
+      const nom = this.nom().trim();
+      untracked(() => {
+        if (this.projet() || !this.brouillonPret()) return;
+        const [premiere, ...reste] = this.brouillon().split('\n');
+        if (premiere !== `# ${this.titreModele}`) return;
+        this.titreModele = nom || '[Titre court du sujet]';
+        const texte = [`# ${this.titreModele}`, ...reste].join('\n');
+        this.brouillon.set(texte);
+        this.editeurCreation()?.remplacer(texte);
+      });
+    });
   }
 
   private async charger(id: string | undefined) {
     this.pret.set(false);
     try {
-      const [ts, moi, p, fs] = await Promise.all([
+      const [ts, moi, p, fs, modele] = await Promise.all([
         this.api.trimestres(),
         this.api.moi(),
         id ? this.api.projet(id) : Promise.resolve(null),
         id ? this.api.fichiers(id) : Promise.resolve([]),
+        id ? Promise.resolve(null) : this.api.modelePitch(),
       ]);
+      if (modele) {
+        this.titreModele = '[Titre court du sujet]';
+        this.brouillon.set(modele.pitch);
+        this.brouillonPret.set(true);
+      }
       this.trimestres.set(ts);
       this.fichiers.set(fs);
       this.remplir(p, moi.email);
@@ -305,6 +338,7 @@ export class ProjetPage {
       statut: this.statut() as Statut,
       cycleId: this.cycleId() === AUCUN ? null : this.cycleId(),
       objectifIds: this.objectifIds(),
+      ...(this.projet() ? {} : { pitch: this.brouillon() }),
     };
     this.enCours.set(true);
     try {
@@ -315,7 +349,7 @@ export class ProjetPage {
       } else {
         const p = await this.api.creerProjet(saisie);
         this.toast.success('Projet créé');
-        await this.router.navigate(['/projets', p.id], { queryParams: { pitch: 'edition' } });
+        await this.router.navigate(['/projets', p.id]);
       }
     } catch (e) {
       this.toast.error(messageErreur(e));

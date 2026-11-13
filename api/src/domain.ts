@@ -125,6 +125,8 @@ export function verifierOwner(owner: string, domaine: string): string | null {
 /** Taille maximale d'un fichier joint au pitch */
 export const TAILLE_MAX_FICHIER = 10 * 1024 * 1024;
 export const TAILLE_MAX_PITCH = 100_000;
+/** Titre du modèle tant que le projet n'a pas de nom */
+export const TITRE_MODELE = '[Titre court du sujet]';
 
 /** Modèle du guide « Rédiger un pitch », pré-rempli avec le nom du projet, l'auteur et la date. */
 export function modelePitch(nom: string, auteur: string, jour: string): string {

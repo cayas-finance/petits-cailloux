@@ -64,6 +64,8 @@ export interface ProjetSaisi {
   statut: Statut;
   cycleId: string | null;
   objectifIds: string[];
+  /** À la création seulement */
+  pitch?: string;
 }
 
 export interface Fichier {
@@ -145,6 +147,9 @@ export class Api {
     return firstValueFrom(this.http.delete<void>(`/api/projets/${id}`));
   }
 
+  modelePitch() {
+    return firstValueFrom(this.http.get<{ pitch: string }>('/api/pitch/modele'));
+  }
   enregistrerPitch(id: string, pitch: string) {
     return firstValueFrom(this.http.put<Projet>(`/api/projets/${id}/pitch`, { pitch }));
   }
