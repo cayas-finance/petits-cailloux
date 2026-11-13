@@ -25,7 +25,7 @@ Un seul Worker sert l'interface (fichiers statiques) et l'API (`/api/*`). Voir `
 Node 22.22.3+, 24.15+ ou 26 (exigence d'Angular). La version est épinglée pour Volta (`package.json`) et nvm (`.nvmrc`) : elle s'installe d'elle-même.
 
 ```bash
-npm install
+npm ci
 cp .dev.vars.example .dev.vars        # DEV_EMAIL : se faire passer pour un utilisateur, en local seulement
 npm run db:migrate:local
 npm run build && npx wrangler dev     # http://localhost:8787
