@@ -16,10 +16,14 @@ import { cycleLabel, statusBadgeType } from './project-labels';
     @if (project(); as p) {
       <div class="mx-auto flex max-w-3xl flex-col gap-6">
         <div class="flex flex-wrap items-center justify-between gap-2 print:hidden">
-          <a [routerLink]="['/projects', p.id]" class="text-sm text-muted-foreground hover:text-foreground">← Fiche du projet</a>
+          @if (from() === 'weekly-review') {
+            <a routerLink="/weekly-review" class="text-sm text-muted-foreground hover:text-foreground">← Point hebdo</a>
+          } @else {
+            <a [routerLink]="['/projects', p.id]" class="text-sm text-muted-foreground hover:text-foreground">← Fiche du projet</a>
+          }
           <div class="flex gap-2">
             <button z-button zType="outline" zSize="sm" (click)="print()">Imprimer</button>
-            <a z-button zSize="sm" [routerLink]="['/projects', p.id]" [queryParams]="{ pitch: 'edit' }">Modifier le pitch</a>
+            <a z-button zSize="sm" [routerLink]="['/projects', p.id]" [queryParams]="{ pitch: 'edit', from: from() }">Modifier le pitch</a>
           </div>
         </div>
 
@@ -76,6 +80,8 @@ export class PitchPage {
   private readonly toast = inject(ZardSonnerService);
 
   readonly id = input.required<string>();
+  /** ?from=weekly-review: the back link returns to the weekly review */
+  readonly from = input<string>();
 
   protected readonly project = signal<Project | null>(null);
   protected readonly attachments = signal<Attachment[]>([]);

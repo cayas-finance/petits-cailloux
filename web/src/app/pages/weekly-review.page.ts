@@ -9,6 +9,7 @@ import { ZardSonnerService } from '@/shared/components/sonner';
 import { Api, Bet, Project, Quarter, WeeklyReview, errorMessage } from '../core/api';
 import { longDay, quarterLabel, shortDay } from '../core/dates';
 import { PitchViewComponent } from '../pitch/pitch-view.component';
+import { ProjectPanelComponent } from './project-panel.component';
 
 @Component({
   selector: 'app-weekly-review',
@@ -20,6 +21,7 @@ import { PitchViewComponent } from '../pitch/pitch-view.component';
     ZardInputComponent,
     ZardTextareaComponent,
     PitchViewComponent,
+    ProjectPanelComponent,
   ],
   template: `
     <div class="flex flex-col gap-6">
@@ -114,7 +116,7 @@ import { PitchViewComponent } from '../pitch/pitch-view.component';
                             Remettre en cours
                           </button>
                         }
-                        <a z-button zType="ghost" [routerLink]="['/projects', b.id]">Ouvrir le projet</a>
+                        <button z-button zType="ghost" (click)="show(b)">Voir le projet</button>
                       </div>
 
                       @if (pastNotes(b).length) {
@@ -179,7 +181,7 @@ import { PitchViewComponent } from '../pitch/pitch-view.component';
               @for (t of shortTopics().pending; track t.id) {
                 <li class="flex flex-col gap-2 px-4 py-3">
                   <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <a [routerLink]="['/projects', t.id]" class="font-medium hover:underline">{{ t.name }}</a>
+                    <button type="button" class="font-medium hover:underline" (click)="show(t)">{{ t.name }}</button>
                     @if (t.status === 'waiting') {
                       <z-badge zType="secondary">Pas maintenant</z-badge>
                     }
@@ -206,7 +208,7 @@ import { PitchViewComponent } from '../pitch/pitch-view.component';
             <ul class="flex flex-col divide-y rounded-xl border">
               @for (t of shortTopics().current; track t.id) {
                 <li class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-                  <a [routerLink]="['/projects', t.id]" class="font-medium hover:underline">{{ t.name }}</a>
+                  <button type="button" class="font-medium hover:underline" (click)="show(t)">{{ t.name }}</button>
                   @if (t.status === 'shipped') {
                     <z-badge zType="outline">Livré</z-badge>
                   }
@@ -233,6 +235,10 @@ import { PitchViewComponent } from '../pitch/pitch-view.component';
         </section>
       }
     </div>
+
+    @if (shown(); as p) {
+      <app-project-panel [project]="p" [quarters]="quarters()" (closed)="hide()" />
+    }
   `,
 })
 export class WeeklyReviewPage {
@@ -241,7 +247,10 @@ export class WeeklyReviewPage {
 
   protected readonly loading = signal(true);
   protected readonly review = signal<WeeklyReview | null>(null);
-  private readonly quarters = signal<Quarter[]>([]);
+  protected readonly quarters = signal<Quarter[]>([]);
+  /** Project opened in the side panel */
+  protected readonly shown = signal<Project | null>(null);
+  private opener: HTMLElement | null = null;
   protected readonly open = signal(new Set<string>());
   /** Text being typed, per bet */
   protected readonly drafts = signal<Record<string, string>>({});
@@ -295,6 +304,18 @@ export class WeeklyReviewPage {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  protected show(p: Project) {
+    this.opener = document.activeElement as HTMLElement | null;
+    this.shown.set(p);
+  }
+
+  protected hide() {
+    this.shown.set(null);
+    // Give the focus back to the button that opened the panel.
+    this.opener?.focus();
+    this.opener = null;
   }
 
   protected toggle(id: string) {

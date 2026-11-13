@@ -43,7 +43,11 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
     PitchViewComponent,
   ],
   template: `
-    <a routerLink="/projects" class="text-sm text-muted-foreground hover:text-foreground">← Tous les projets</a>
+    @if (from() === 'weekly-review') {
+      <a routerLink="/weekly-review" class="text-sm text-muted-foreground hover:text-foreground">← Point hebdo</a>
+    } @else {
+      <a routerLink="/projects" class="text-sm text-muted-foreground hover:text-foreground">← Tous les projets</a>
+    }
 
     @if (ready()) {
       <div class="mt-3 flex flex-col gap-6">
@@ -212,7 +216,7 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
               } @else {
                 <div class="flex gap-2">
                   <button z-button zType="outline" (click)="openPitch(p)">{{ p.format === 'short' ? 'Modifier le problème' : 'Modifier le pitch' }}</button>
-                  <a z-button zType="ghost" [routerLink]="['/projects', p.id, 'pitch']">{{ p.format === 'short' ? 'Lire le sujet seul' : 'Lire le pitch seul' }}</a>
+                  <a z-button zType="ghost" [routerLink]="['/projects', p.id, 'pitch']" [queryParams]="from() ? { from: from() } : {}">{{ p.format === 'short' ? 'Lire le sujet seul' : 'Lire le pitch seul' }}</a>
                 </div>
                 @if (p.pitch.trim()) {
                   <app-pitch-view [markdown]="p.pitch" />
@@ -287,6 +291,8 @@ export class ProjectPage {
   readonly id = input<string>();
   /** ?pitch=edit opens the editor directly */
   readonly pitch = input<string>();
+  /** ?from=weekly-review: the back link returns to the weekly review */
+  readonly from = input<string>();
 
   protected readonly none = NONE;
   protected readonly formats = FORMATS;
@@ -501,7 +507,7 @@ export class ProjectPage {
       this.project.set(await this.api.savePitch(p.id, this.draft()));
       this.editingPitch.set(false);
       this.toast.success(p.format === 'short' ? 'Problème enregistré' : 'Pitch enregistré');
-      if (this.pitch()) await this.router.navigate([], { queryParams: {}, replaceUrl: true });
+      if (this.pitch()) await this.router.navigate([], { queryParams: { pitch: null }, queryParamsHandling: 'merge', replaceUrl: true });
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -512,7 +518,7 @@ export class ProjectPage {
   protected cancelPitch(p: Project) {
     const close = () => {
       this.editingPitch.set(false);
-      if (this.pitch()) this.router.navigate([], { queryParams: {}, replaceUrl: true });
+      if (this.pitch()) this.router.navigate([], { queryParams: { pitch: null }, queryParamsHandling: 'merge', replaceUrl: true });
     };
     if (this.draft() === p.pitch) return close();
     this.alert.confirm({
