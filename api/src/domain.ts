@@ -187,26 +187,12 @@ export function semaineDe(cycle: { debut: Jour; fin: Jour }, jour: Jour): number
   return Math.min(4, Math.floor(jours / 7) + 1);
 }
 
-/**
- * Semaine où ranger la note de suivi : la semaine en cours, la semaine 1
- * avant le début du cycle, la semaine 4 après sa fin.
- */
-export function semaineDeNote(cycle: { debut: Jour; fin: Jour }, jour: Jour): number {
-  if (jour < cycle.debut) return 1;
-  if (jour > cycle.fin) return 4;
-  return semaineDe(cycle, jour) ?? 1;
+/** Cycle en cours à cette date, sinon null. */
+export function cycleEnCours<T extends { debut: Jour; fin: Jour }>(cycles: T[], jour: Jour): T | null {
+  return cycles.find((c) => c.debut <= jour && jour <= c.fin) ?? null;
 }
 
-/**
- * Cycle à afficher par défaut au point hebdo : celui en cours, sinon le
- * prochain à venir, sinon le dernier terminé.
- */
-export function cycleParDefaut<T extends { debut: Jour; fin: Jour }>(cycles: T[], jour: Jour): T | null {
-  const tries = [...cycles].sort((a, b) => a.debut.localeCompare(b.debut));
-  return (
-    tries.find((c) => c.debut <= jour && jour <= c.fin) ??
-    tries.find((c) => c.debut > jour) ??
-    tries.at(-1) ??
-    null
-  );
+/** Prochain cycle à commencer après cette date, sinon null. */
+export function prochainCycle<T extends { debut: Jour }>(cycles: T[], jour: Jour): T | null {
+  return [...cycles].sort((a, b) => a.debut.localeCompare(b.debut)).find((c) => c.debut > jour) ?? null;
 }

@@ -1,15 +1,12 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { map } from 'rxjs';
+import { RouterLink } from '@angular/router';
 import { ZardButtonComponent } from '@/shared/components/button';
 import { ZardBadgeComponent } from '@/shared/components/badge';
-import { ZardSelectImports } from '@/shared/components/select';
 import { ZardTextareaComponent } from '@/shared/components/textarea';
 import { ZardSonnerService } from '@/shared/components/sonner';
 import { Api, Pari, PointHebdo, Trimestre, messageErreur } from '../core/api';
-import { jourCourt, libelleTrimestre } from '../core/dates';
+import { jourCourt, jourLong, libelleTrimestre } from '../core/dates';
 import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
 
 @Component({
@@ -20,7 +17,6 @@ import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
     ZardButtonComponent,
     ZardBadgeComponent,
     ZardTextareaComponent,
-    ...ZardSelectImports,
     PitchRenduComponent,
   ],
   template: `
@@ -30,23 +26,18 @@ import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
           <h1 class="text-xl font-bold">Point hebdo</h1>
           <p class="text-sm text-muted-foreground">{{ sousTitre() }}</p>
         </div>
-        @if (cycles().length) {
-          <label class="flex items-center gap-2 text-sm font-medium">
-            <span class="sr-only sm:not-sr-only">Cycle</span>
-            <z-select class="w-80 max-w-full" [zValue]="point()?.cycle?.id ?? ''" (zValueChange)="choisirCycle($any($event))" zPlaceholder="Cycle">
-              @for (c of cycles(); track c.id) {
-                <z-select-item [zValue]="c.id">{{ c.libelle }}</z-select-item>
-              }
-            </z-select>
-          </label>
-        }
       </div>
 
       @if (chargement()) {
         <p class="text-sm text-muted-foreground">Chargement…</p>
       } @else if (!point()?.cycle) {
         <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Aucun cycle pour l’instant. <a routerLink="/trimestres" class="text-primary underline">Créez-en un</a> dans un trimestre.
+          Aucun cycle en cours.
+          @if (point()?.prochain; as c) {
+            Le prochain commence le {{ jourLong(c.debut) }}.
+          } @else {
+            <a routerLink="/trimestres" class="text-primary underline">Ajoutez un cycle</a> à un trimestre.
+          }
         </p>
       } @else {
         <section class="flex flex-col gap-3">
@@ -88,7 +79,7 @@ import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
                     <div [id]="'pari-' + p.id" class="flex flex-col gap-4 border-t bg-muted/20 px-4 py-4">
                       @if (semaine(); as s) {
                         <label class="flex flex-col gap-1.5 text-sm font-medium">
-                          {{ libelleNote() }}
+                          Suivi de la semaine {{ s }}
                           <textarea
                             z-textarea
                             rows="3"
@@ -161,11 +152,7 @@ import { PitchRenduComponent } from '../pitch/pitch-rendu.component';
 })
 export class PointHebdoPage {
   private readonly api = inject(Api);
-  private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
   private readonly toast = inject(ZardSonnerService);
-
-  private readonly cycleDemande = toSignal(this.route.queryParamMap.pipe(map((q) => q.get('cycle') ?? undefined)));
 
   protected readonly chargement = signal(true);
   protected readonly point = signal<PointHebdo | null>(null);
@@ -175,16 +162,9 @@ export class PointHebdoPage {
   protected readonly brouillons = signal<Record<string, string>>({});
   protected readonly enCours = signal<string | null>(null);
 
+  protected readonly jourLong = jourLong;
   protected readonly paris = computed(() => this.point()?.paris ?? []);
-  /** Semaine où l'on écrit la note : en cours, 1 avant le cycle, 4 après */
-  protected readonly semaine = computed(() => this.point()?.semaineNote ?? null);
-
-  protected readonly libelleNote = computed(() => {
-    const p = this.point();
-    if (!p?.cycle) return '';
-    if (p.semaine) return `Suivi de la semaine ${p.semaine}`;
-    return p.semaineNote === 1 ? 'Note avant le début du cycle (semaine 1)' : 'Note de fin de cycle (semaine 4)';
-  });
+  protected readonly semaine = computed(() => this.point()?.semaine ?? null);
 
   protected readonly cycles = computed(() =>
     this.trimestres()
@@ -194,10 +174,9 @@ export class PointHebdoPage {
 
   protected readonly sousTitre = computed(() => {
     const p = this.point();
-    if (!p?.cycle) return 'Chaque semaine, on fait le point sur les paris du cycle.';
+    if (!p?.cycle) return 'Chaque semaine, on fait le point sur les paris du cycle en cours.';
     const nom = this.cycles().find((c) => c.id === p.cycle!.id)?.libelle ?? `Cycle ${p.cycle.numero}`;
-    if (p.semaine) return `${nom} · semaine ${p.semaine} sur 4${p.semaine === 4 ? ' : point de fin de cycle' : ''}`;
-    return `${nom} · ${p.cycle.debut > new Date().toISOString().slice(0, 10) ? 'à venir' : 'terminé'}`;
+    return `${nom} · semaine ${p.semaine} sur 4${p.semaine === 4 ? ' : point de fin de cycle' : ''}`;
   });
 
   private readonly objectifs = computed(
@@ -206,18 +185,14 @@ export class PointHebdoPage {
 
   constructor() {
     this.api.trimestres().then((ts) => this.trimestres.set(ts)).catch(() => {});
-    effect(() => {
-      const id = this.cycleDemande();
-      untracked(() => this.charger(id));
-    });
+    this.charger();
   }
 
-  private async charger(cycleId?: string) {
-    this.chargement.set(true);
+  private async charger() {
     try {
-      const p = await this.api.pointHebdo(cycleId);
+      const p = await this.api.pointHebdo();
       this.point.set(p);
-      this.brouillons.set(Object.fromEntries(p.paris.map((x) => [x.id, this.noteDe(x, p.semaineNote)?.texte ?? ''])));
+      this.brouillons.set(Object.fromEntries(p.paris.map((x) => [x.id, this.noteDe(x, p.semaine)?.texte ?? ''])));
       // Un seul pari : on l'ouvre directement.
       this.ouverts.set(new Set(p.paris.length === 1 ? [p.paris[0].id] : []));
     } catch (e) {
@@ -225,10 +200,6 @@ export class PointHebdoPage {
     } finally {
       this.chargement.set(false);
     }
-  }
-
-  protected choisirCycle(id: string) {
-    if (id && id !== this.point()?.cycle?.id) this.router.navigate([], { queryParams: { cycle: id } });
   }
 
   protected basculer(id: string) {
@@ -247,9 +218,8 @@ export class PointHebdoPage {
     return semaine ? p.notes.find((n) => n.semaine === semaine) : undefined;
   }
 
-  /** Note de la semaine en cours, ou la plus récente si le cycle n'est pas en cours */
   protected noteSemaine(p: Pari) {
-    return this.semaine() ? this.noteDe(p, this.semaine()) : p.notes[0];
+    return this.noteDe(p, this.semaine());
   }
 
   protected notesPassees(p: Pari) {

@@ -101,8 +101,8 @@ export interface PointHebdo {
   cycle: Cycle | null;
   /** Semaine 1 à 4 si le cycle est en cours, sinon null */
   semaine: number | null;
-  /** Semaine où ranger la note : 1 avant le cycle, 4 après */
-  semaineNote: number | null;
+  /** S'il n'y a pas de cycle en cours : le prochain à commencer */
+  prochain: Cycle | null;
   paris: Pari[];
 }
 
@@ -190,9 +190,8 @@ export class Api {
     return firstValueFrom(this.http.delete<Projet | null>(`/api/fichiers/${id}`));
   }
 
-  pointHebdo(cycleId?: string) {
-    const params: Record<string, string> = cycleId ? { cycle: cycleId } : {};
-    return firstValueFrom(this.http.get<PointHebdo>('/api/point-hebdo', { params }));
+  pointHebdo() {
+    return firstValueFrom(this.http.get<PointHebdo>('/api/point-hebdo'));
   }
   enregistrerNote(projetId: string, cycleId: string, semaine: number, texte: string) {
     return firstValueFrom(
