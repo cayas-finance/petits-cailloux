@@ -105,3 +105,25 @@ describe('retrait d’un fichier joint', () => {
     expect(retirerLiensFichier(`${autre}\n[a](${url})`, url)).toBe(`${autre}\n`);
   });
 });
+
+import { cycleParDefaut, semaineDe } from '../src/domain';
+
+describe('point hebdo', () => {
+  const c = { debut: '2026-11-02', fin: '2026-11-29' };
+  it('donne la semaine du cycle', () => {
+    expect(semaineDe(c, '2026-11-02')).toBe(1);
+    expect(semaineDe(c, '2026-11-08')).toBe(1);
+    expect(semaineDe(c, '2026-11-09')).toBe(2);
+    expect(semaineDe(c, '2026-11-29')).toBe(4);
+    expect(semaineDe(c, '2026-11-30')).toBeNull();
+    expect(semaineDe(c, '2026-11-01')).toBeNull();
+  });
+  it('choisit le cycle en cours, puis le prochain, puis le dernier', () => {
+    const a = { id: 'a', debut: '2026-10-05', fin: '2026-11-01' };
+    const b = { id: 'b', debut: '2026-11-02', fin: '2026-11-29' };
+    expect(cycleParDefaut([a, b], '2026-11-13')?.id).toBe('b');
+    expect(cycleParDefaut([b], '2026-10-20')?.id).toBe('b');
+    expect(cycleParDefaut([a, b], '2026-12-15')?.id).toBe('b');
+    expect(cycleParDefaut([], '2026-12-15')).toBeNull();
+  });
+});

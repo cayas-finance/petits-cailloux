@@ -99,3 +99,25 @@ export const projetObjectifs = sqliteTable(
   },
   (t) => [uniqueIndex('projet_objectifs_pk').on(t.projetId, t.objectifId), index('projet_objectifs_objectif').on(t.objectifId)],
 );
+
+/** Note de suivi d'un pari, une par semaine du cycle (point hebdo) */
+export const notesSuivi = sqliteTable(
+  'notes_suivi',
+  {
+    id: text('id').primaryKey(),
+    projetId: text('projet_id')
+      .notNull()
+      .references(() => projets.id, { onDelete: 'cascade' }),
+    cycleId: text('cycle_id')
+      .notNull()
+      .references(() => cycles.id, { onDelete: 'cascade' }),
+    /** Semaine 1 à 4 du cycle */
+    semaine: integer('semaine').notNull(),
+    texte: text('texte').notNull(),
+    creeLe: text('cree_le').notNull(),
+    creePar: text('cree_par').notNull(),
+    majLe: text('maj_le').notNull(),
+    majPar: text('maj_par').notNull(),
+  },
+  (t) => [uniqueIndex('notes_suivi_semaine').on(t.projetId, t.cycleId, t.semaine), index('notes_suivi_cycle').on(t.cycleId)],
+);

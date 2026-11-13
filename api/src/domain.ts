@@ -177,3 +177,26 @@ export function retirerLiensFichier(pitch: string, url: string): string {
     .replace(new RegExp(`^[ \\t]*!?\\[[^\\]\\n]*\\]\\(${echappee}\\)[ \\t]*\\n?`, 'gm'), '')
     .replace(new RegExp(`!?\\[[^\\]\\n]*\\]\\(${echappee}\\)`, 'g'), '');
 }
+
+/* ---------- Point hebdo ---------- */
+
+/** Semaine 1 à 4 du cycle pour un jour donné, ou null hors du cycle. */
+export function semaineDe(cycle: { debut: Jour; fin: Jour }, jour: Jour): number | null {
+  if (jour < cycle.debut || jour > cycle.fin) return null;
+  const jours = Math.round((depuisJour(jour).getTime() - depuisJour(cycle.debut).getTime()) / 86_400_000);
+  return Math.min(4, Math.floor(jours / 7) + 1);
+}
+
+/**
+ * Cycle à afficher par défaut au point hebdo : celui en cours, sinon le
+ * prochain à venir, sinon le dernier terminé.
+ */
+export function cycleParDefaut<T extends { debut: Jour; fin: Jour }>(cycles: T[], jour: Jour): T | null {
+  const tries = [...cycles].sort((a, b) => a.debut.localeCompare(b.debut));
+  return (
+    tries.find((c) => c.debut <= jour && jour <= c.fin) ??
+    tries.find((c) => c.debut > jour) ??
+    tries.at(-1) ??
+    null
+  );
+}
