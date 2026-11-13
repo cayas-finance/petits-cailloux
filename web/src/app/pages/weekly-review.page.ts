@@ -3,9 +3,10 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ZardButtonComponent } from '@/shared/components/button';
 import { ZardBadgeComponent } from '@/shared/components/badge';
+import { ZardInputComponent } from '@/shared/components/input';
 import { ZardTextareaComponent } from '@/shared/components/textarea';
 import { ZardSonnerService } from '@/shared/components/sonner';
-import { Api, Bet, Quarter, WeeklyReview, errorMessage } from '../core/api';
+import { Api, Bet, Project, Quarter, WeeklyReview, errorMessage } from '../core/api';
 import { longDay, quarterLabel, shortDay } from '../core/dates';
 import { PitchViewComponent } from '../pitch/pitch-view.component';
 
@@ -16,6 +17,7 @@ import { PitchViewComponent } from '../pitch/pitch-view.component';
     RouterLink,
     ZardButtonComponent,
     ZardBadgeComponent,
+    ZardInputComponent,
     ZardTextareaComponent,
     PitchViewComponent,
   ],
@@ -146,6 +148,89 @@ import { PitchViewComponent } from '../pitch/pitch-view.component';
             </ul>
           }
         </section>
+
+        <section class="flex flex-col gap-3">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-lg font-semibold">2. Sujets courts</h2>
+            <span class="text-sm text-muted-foreground">Posés en direct, décidés tout de suite, sans shaping</span>
+          </div>
+
+          <form class="flex flex-col gap-3 rounded-xl border p-4" (submit)="$event.preventDefault(); addShortTopic()">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="flex flex-col gap-1.5 text-sm font-medium">
+                Titre
+                <input z-input name="title" [(ngModel)]="newTitle" maxlength="200" placeholder="Ex. Export CSV des écritures" />
+              </label>
+              <label class="flex flex-col gap-1.5 text-sm font-medium">
+                Demandeur
+                <input z-input name="requester" [(ngModel)]="newRequester" maxlength="200" placeholder="Ex. Nico, pour le client Dupont" />
+              </label>
+            </div>
+            <label class="flex flex-col gap-1.5 text-sm font-medium">
+              Problème
+              <textarea z-textarea name="problem" rows="2" [(ngModel)]="newProblem" placeholder="La situation vécue, en quelques lignes"></textarea>
+            </label>
+            <div><button z-button type="submit" [zLoading]="busy() === 'new'">Poser le sujet</button></div>
+          </form>
+
+          @if (shortTopics().pending.length) {
+            <h3 class="text-sm font-medium">À décider</h3>
+            <ul class="flex flex-col divide-y rounded-xl border">
+              @for (t of shortTopics().pending; track t.id) {
+                <li class="flex flex-col gap-2 px-4 py-3">
+                  <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <a [routerLink]="['/projects', t.id]" class="font-medium hover:underline">{{ t.name }}</a>
+                    @if (t.status === 'waiting') {
+                      <z-badge zType="secondary">Pas maintenant</z-badge>
+                    }
+                    <span class="ml-auto text-sm text-muted-foreground">Demandé par {{ t.requester }}</span>
+                  </div>
+                  @if (t.pitch.trim()) {
+                    <app-pitch-view [markdown]="t.pitch" />
+                  }
+                  <div class="flex flex-wrap gap-2">
+                    <button z-button zSize="sm" [zLoading]="busy() === t.id + ':take'" (click)="decide(t, 'take')">On le fait</button>
+                    @if (t.status !== 'waiting') {
+                      <button z-button zSize="sm" zType="outline" [zLoading]="busy() === t.id + ':later'" (click)="decide(t, 'later')">Pas maintenant</button>
+                    }
+                    <button z-button zSize="sm" zType="outline" [zLoading]="busy() === t.id + ':promote'" (click)="decide(t, 'promote')">En faire un pari</button>
+                    <button z-button zSize="sm" zType="ghost" class="text-destructive" [zLoading]="busy() === t.id + ':drop'" (click)="decide(t, 'drop')">Écarter</button>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+
+          @if (shortTopics().current.length) {
+            <h3 class="text-sm font-medium">Pris dans ce cycle</h3>
+            <ul class="flex flex-col divide-y rounded-xl border">
+              @for (t of shortTopics().current; track t.id) {
+                <li class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+                  <a [routerLink]="['/projects', t.id]" class="font-medium hover:underline">{{ t.name }}</a>
+                  @if (t.status === 'shipped') {
+                    <z-badge zType="outline">Livré</z-badge>
+                  }
+                  <span class="text-sm text-muted-foreground">Demandé par {{ t.requester }}</span>
+                  <span class="ml-auto">
+                    @if (t.status === 'bet') {
+                      <button z-button zSize="sm" zType="outline" [zLoading]="busy() === t.id + ':status'" (click)="setShortStatus(t, 'shipped')">
+                        Marquer livré
+                      </button>
+                    } @else {
+                      <button z-button zSize="sm" zType="ghost" [zLoading]="busy() === t.id + ':status'" (click)="setShortStatus(t, 'bet')">
+                        Remettre en cours
+                      </button>
+                    }
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+
+          @if (!shortTopics().pending.length && !shortTopics().current.length) {
+            <p class="text-sm text-muted-foreground">Aucun sujet court en attente ni en cours.</p>
+          }
+        </section>
       }
     </div>
   `,
@@ -164,6 +249,11 @@ export class WeeklyReviewPage {
 
   protected readonly longDay = longDay;
   protected readonly bets = computed(() => this.review()?.bets ?? []);
+  protected readonly shortTopics = computed(() => this.review()?.shortTopics ?? { pending: [], current: [] });
+
+  protected readonly newTitle = signal('');
+  protected readonly newRequester = signal('');
+  protected readonly newProblem = signal('');
   protected readonly week = computed(() => this.review()?.week ?? null);
 
   private readonly cycleLabels = computed(
@@ -271,6 +361,82 @@ export class WeeklyReviewPage {
     } finally {
       this.busy.set(null);
     }
+  }
+
+  protected async addShortTopic() {
+    const name = this.newTitle().trim();
+    const requester = this.newRequester().trim();
+    if (!name || !requester) {
+      this.toast.error('Donnez au moins un titre et un demandeur.');
+      return;
+    }
+    this.busy.set('new');
+    try {
+      const t = await this.api.createProject({
+        name,
+        format: 'short',
+        requester,
+        status: 'received',
+        cycleId: null,
+        goalIds: [],
+        pitch: this.newProblem().trim(),
+      });
+      this.updateShortTopics((s) => ({ ...s, pending: [...s.pending, t] }));
+      this.newTitle.set('');
+      this.newRequester.set('');
+      this.newProblem.set('');
+      this.toast.success('Sujet posé');
+    } catch (e) {
+      this.toast.error(errorMessage(e));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  /** Decisions on a short topic: take it in the current cycle, put it aside, drop it, or make it a bet. */
+  protected async decide(t: Project, decision: 'take' | 'later' | 'drop' | 'promote') {
+    const cycle = this.review()?.cycle;
+    if (!cycle) return;
+    this.busy.set(`${t.id}:${decision}`);
+    try {
+      let updated: Project;
+      if (decision === 'take') updated = await this.api.setStatus(t.id, 'bet', cycle.id);
+      else if (decision === 'later') updated = await this.api.setStatus(t.id, 'waiting', null);
+      else if (decision === 'drop') updated = await this.api.setStatus(t.id, 'dropped', null);
+      else updated = await this.api.promote(t.id);
+      this.updateShortTopics((s) => ({
+        pending: decision === 'later' ? s.pending.map((x) => (x.id === t.id ? updated : x)) : s.pending.filter((x) => x.id !== t.id),
+        current: decision === 'take' ? [...s.current, updated] : s.current,
+      }));
+      const messages = {
+        take: 'pris dans le cycle',
+        later: 'pas maintenant',
+        drop: 'écarté',
+        promote: 'devient un pari, en shaping',
+      };
+      this.toast.success(`${t.name} : ${messages[decision]}`);
+    } catch (e) {
+      this.toast.error(errorMessage(e));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  protected async setShortStatus(t: Project, status: 'shipped' | 'bet') {
+    this.busy.set(t.id + ':status');
+    try {
+      const updated = await this.api.setStatus(t.id, status);
+      this.updateShortTopics((s) => ({ ...s, current: s.current.map((x) => (x.id === t.id ? updated : x)) }));
+      this.toast.success(status === 'shipped' ? `${t.name} : livré` : `${t.name} : remis en cours`);
+    } catch (e) {
+      this.toast.error(errorMessage(e));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  private updateShortTopics(f: (s: WeeklyReview['shortTopics']) => WeeklyReview['shortTopics']) {
+    this.review.update((r) => (r ? { ...r, shortTopics: f(r.shortTopics) } : r));
   }
 
   private updateBet(id: string, f: (b: Bet) => Bet) {

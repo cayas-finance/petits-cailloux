@@ -5,7 +5,7 @@ import { ZardBadgeComponent } from '@/shared/components/badge';
 import { ZardSelectImports } from '@/shared/components/select';
 import { ZardTableImports } from '@/shared/components/table';
 import { ZardSonnerService } from '@/shared/components/sonner';
-import { Api, Project, Quarter, STATUSES, Status, errorMessage } from '../core/api';
+import { Api, FORMATS, Format, Project, Quarter, STATUSES, Status, errorMessage, statusLabel } from '../core/api';
 import { shortDay } from '../core/dates';
 import { cycleLabel, statusBadgeType } from './project-labels';
 
@@ -17,27 +17,38 @@ import { cycleLabel, statusBadgeType } from './project-labels';
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 class="text-xl font-bold">Projets</h1>
-          <p class="text-sm text-muted-foreground">Chaque projet a un owner, un statut, et un cycle une fois misé.</p>
+          <p class="text-sm text-muted-foreground">Un pari a un owner et un cycle une fois misé. Un sujet court a un demandeur et se décide au point hebdo.</p>
         </div>
         <a z-button routerLink="/projects/new">Nouveau projet</a>
       </div>
 
-      <label class="flex items-center gap-2 text-sm font-medium">
-        Statut
-        <z-select class="w-56" [(zValue)]="filter" zPlaceholder="Tous">
-          <z-select-item zValue="all">Tous</z-select-item>
-          @for (s of statuses; track s[0]) {
-            <z-select-item [zValue]="s[0]">{{ s[1] }}</z-select-item>
-          }
-        </z-select>
-      </label>
+      <div class="flex flex-wrap gap-4">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Format
+          <z-select class="w-40" [(zValue)]="formatFilter" zPlaceholder="Tous">
+            <z-select-item zValue="all">Tous</z-select-item>
+            @for (f of formats; track f[0]) {
+              <z-select-item [zValue]="f[0]">{{ f[1] }}</z-select-item>
+            }
+          </z-select>
+        </label>
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Statut
+          <z-select class="w-56" [(zValue)]="filter" zPlaceholder="Tous">
+            <z-select-item zValue="all">Tous</z-select-item>
+            @for (s of statuses; track s[0]) {
+              <z-select-item [zValue]="s[0]">{{ s[1] }}</z-select-item>
+            }
+          </z-select>
+        </label>
+      </div>
 
       @if (loading()) {
         <p class="text-sm text-muted-foreground">Chargement…</p>
       } @else if (!visible().length) {
         <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
           @if (projects().length) {
-            Aucun projet avec ce statut.
+            Aucun projet avec ces critères.
           } @else {
             Aucun projet pour l’instant.
           }
@@ -48,7 +59,7 @@ import { cycleLabel, statusBadgeType } from './project-labels';
             <thead z-table-header>
               <tr z-table-row>
                 <th z-table-head>Nom</th>
-                <th z-table-head>Owner</th>
+                <th z-table-head>Owner ou demandeur</th>
                 <th z-table-head>Statut</th>
                 <th z-table-head>Cycle</th>
                 <th z-table-head>Objectifs</th>
@@ -60,9 +71,12 @@ import { cycleLabel, statusBadgeType } from './project-labels';
                 <tr z-table-row>
                   <td z-table-cell class="font-medium">
                     <a [routerLink]="['/projects', p.id]" class="hover:underline">{{ p.name }}</a>
+                    @if (p.format === 'short') {
+                      <z-badge zType="outline" class="ml-2">Court</z-badge>
+                    }
                   </td>
-                  <td z-table-cell class="text-muted-foreground">{{ p.owner }}</td>
-                  <td z-table-cell><z-badge [zType]="badge(p.status)">{{ statusLabel(p.status) }}</z-badge></td>
+                  <td z-table-cell class="text-muted-foreground">{{ p.owner ?? 'Demandé par ' + p.requester }}</td>
+                  <td z-table-cell><z-badge [zType]="badge(p.status)">{{ statusLabel(p) }}</z-badge></td>
                   <td z-table-cell>
                     @if (p.cycle) {
                       {{ cycle(p.cycle) }}
@@ -79,7 +93,7 @@ import { cycleLabel, statusBadgeType } from './project-labels';
                     }
                   </td>
                   <td z-table-cell class="text-right">
-                    <a [routerLink]="['/projects', p.id, 'pitch']" class="text-sm whitespace-nowrap text-primary hover:underline">Lire le pitch</a>
+                    <a [routerLink]="['/projects', p.id, 'pitch']" class="text-sm whitespace-nowrap text-primary hover:underline">{{ p.format === 'short' ? 'Lire le sujet' : 'Lire le pitch' }}</a>
                   </td>
                 </tr>
               }
@@ -98,10 +112,14 @@ export class ProjectsPage {
   protected readonly projects = signal<Project[]>([]);
   private readonly quarters = signal<Quarter[]>([]);
   protected readonly loading = signal(true);
+  protected readonly formats = Object.entries(FORMATS) as [Format, string][];
   protected readonly filter = signal('all');
+  protected readonly formatFilter = signal('all');
 
   protected readonly visible = computed(() =>
-    this.filter() === 'all' ? this.projects() : this.projects().filter((p) => p.status === this.filter()),
+    this.projects().filter(
+      (p) => (this.filter() === 'all' || p.status === this.filter()) && (this.formatFilter() === 'all' || p.format === this.formatFilter()),
+    ),
   );
   private readonly goals = computed(
     () => new Map(this.quarters().flatMap((q) => q.goals.map((g) => [g.id, g.title] as const))),
@@ -110,9 +128,7 @@ export class ProjectsPage {
   protected readonly short = shortDay;
   protected readonly badge = statusBadgeType;
   protected readonly cycle = cycleLabel;
-  protected statusLabel(s: Status) {
-    return STATUSES[s];
-  }
+  protected readonly statusLabel = statusLabel;
   protected goalTitle(id: string) {
     return this.goals().get(id) ?? '?';
   }

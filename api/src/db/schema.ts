@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
-import { PROJECT_STATUSES } from '../domain';
+import { PROJECT_FORMATS, PROJECT_STATUSES } from '../domain';
 
 const created = {
   createdAt: text('created_at').notNull(),
@@ -52,12 +52,16 @@ export const projects = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    /** E-mail address of the person who owns the project */
-    owner: text('owner').notNull(),
+    /** Bet (shaping, long pitch) or short topic (decided at the weekly review) */
+    format: text('format', { enum: PROJECT_FORMATS }).notNull().default('bet'),
+    /** E-mail address of the person who owns the bet; short topics have none */
+    owner: text('owner'),
+    /** Who asked for it (free text: a person, a client…); required for a short topic */
+    requester: text('requester').notNull().default(''),
     status: text('status', { enum: PROJECT_STATUSES }).notNull().default('received'),
     /** Cycle the project is taken into; empty until it is bet on */
     cycleId: text('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
-    /** Pitch written in markdown, initialised with the guide's template */
+    /** Markdown: the long pitch of a bet (guide's template), or the problem of a short topic */
     pitch: text('pitch').notNull().default(''),
     ...created,
     updatedAt: text('updated_at').notNull(),

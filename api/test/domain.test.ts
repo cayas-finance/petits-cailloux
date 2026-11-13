@@ -11,6 +11,7 @@ import {
   nextMonday,
   numberCycles,
   pitchTemplate,
+  promotedPitch,
   quarterBounds,
   removeAttachmentLinks,
   suggestedStart,
@@ -67,6 +68,13 @@ describe('projects', () => {
     expect(checkProject({ status: 'bet', cycleId: 'c1' })).toBeNull();
     expect(checkProject({ status: 'received', cycleId: null })).toBeNull();
   });
+  it('requires a requester for a short topic, and no shaping', () => {
+    expect(checkProject({ format: 'short', status: 'received', cycleId: null, requester: 'Nico' })).toBeNull();
+    expect(checkProject({ format: 'short', status: 'received', cycleId: null, requester: ' ' })).toMatch(/demandeur/);
+    expect(checkProject({ format: 'short', status: 'shaping', cycleId: null, requester: 'Nico' })).toMatch(/pari/);
+    expect(checkProject({ format: 'short', status: 'bet', cycleId: null, requester: 'Nico' })).toMatch(/sujet court/);
+    expect(checkProject({ format: 'short', status: 'bet', cycleId: 'c1', requester: 'Nico' })).toBeNull();
+  });
   it('only accepts an owner from the allowed domain', () => {
     expect(checkOwner('marine@cayas.fr', 'cayas.fr')).toBeNull();
     expect(checkOwner('Marine@Cayas.fr ', 'cayas.fr')).toBeNull();
@@ -85,6 +93,12 @@ describe('pitch', () => {
   });
   it('does not ask for goals, already set on the project', () => {
     expect(pitchTemplate('X', 'a@cayas.fr', '2026-11-13')).not.toContain('Objectif servi');
+  });
+  it('keeps the problem when a short topic becomes a bet', () => {
+    const t = promotedPitch('Export CSV', 'thomas@cayas.fr', '2026-11-13', 'Les clients ne peuvent pas exporter.');
+    expect(t).toContain('## Problème\nLes clients ne peuvent pas exporter.\n');
+    expect(t).not.toContain('[Situation vécue');
+    expect(promotedPitch('X', 'a@cayas.fr', '2026-11-13', '  ')).toContain('[Situation vécue');
   });
   it('only serves images and PDFs inline', () => {
     expect(isInline('image/png')).toBe(true);
