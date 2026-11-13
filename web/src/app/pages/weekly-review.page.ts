@@ -6,7 +6,8 @@ import { ZardBadgeComponent } from '@/shared/components/badge';
 import { ZardInputComponent } from '@/shared/components/input';
 import { ZardTextareaComponent } from '@/shared/components/textarea';
 import { ZardSonnerService } from '@/shared/components/sonner';
-import { Api, Bet, Project, Quarter, WeeklyReview, errorMessage } from '../core/api';
+import { Announcement, Api, Bet, Project, Quarter, WeeklyReview, errorMessage } from '../core/api';
+import { slackMessage } from '../core/slack';
 import { longDay, quarterLabel, shortDay } from '../core/dates';
 import { PitchViewComponent } from '../pitch/pitch-view.component';
 import { ProjectPanelComponent } from './project-panel.component';
@@ -242,6 +243,104 @@ import { ProjectPanelComponent } from './project-panel.component';
             <p class="text-sm text-muted-foreground">Aucun sujet court en attente ni en cours.</p>
           }
         </section>
+
+        <section class="flex flex-col gap-3">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-lg font-semibold">3. Infos à diffuser</h2>
+            <span class="text-sm text-muted-foreground">Ce que toute l’équipe doit savoir cette semaine</span>
+          </div>
+
+          <div class="flex flex-col gap-3 rounded-xl border bg-muted/20 px-4 py-3 text-sm">
+            <p class="text-xs text-muted-foreground">Repris automatiquement des notes et des décisions de la semaine.</p>
+            @if (summary().bets.length) {
+              <div>
+                <h3 class="font-medium">Paris</h3>
+                <ul class="mt-1 list-disc pl-5">
+                  @for (line of summary().bets; track $index) {
+                    <li class="whitespace-pre-line">{{ line }}</li>
+                  }
+                </ul>
+              </div>
+            }
+            @if (summary().shortTopics.length) {
+              <div>
+                <h3 class="font-medium">Sujets courts</h3>
+                <ul class="mt-1 list-disc pl-5">
+                  @for (line of summary().shortTopics; track $index) {
+                    <li class="whitespace-pre-line">{{ line }}</li>
+                  }
+                </ul>
+              </div>
+            }
+            @if (!summary().bets.length && !summary().shortTopics.length) {
+              <p class="text-muted-foreground">Rien encore : écrivez une note de suivi ou prenez une décision plus haut.</p>
+            }
+          </div>
+
+          <h3 class="text-sm font-medium">Autres infos</h3>
+          @if (announcements().length) {
+            <ul class="flex flex-col divide-y rounded-xl border">
+              @for (a of announcements(); track a.id) {
+                <li class="flex flex-col gap-2 px-4 py-3">
+                  @if (editingAnnouncement() === a.id) {
+                    <form class="flex flex-col gap-2" (submit)="$event.preventDefault(); saveAnnouncement(a)" (keydown.escape)="editingAnnouncement.set(null)">
+                      <textarea
+                        z-textarea
+                        #announcementEdit
+                        rows="2"
+                        name="edit"
+                        aria-label="Info à diffuser"
+                        [(ngModel)]="announcementDraft"
+                      ></textarea>
+                      <div class="flex gap-2">
+                        <button z-button zSize="sm" type="submit" [zLoading]="busy() === a.id + ':save'">Enregistrer</button>
+                        <button z-button zSize="sm" type="button" zType="ghost" (click)="editingAnnouncement.set(null)">Annuler</button>
+                      </div>
+                    </form>
+                  } @else {
+                    <p class="text-sm whitespace-pre-line">{{ a.text }}</p>
+                    <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{{ a.createdBy }}</span>
+                      <span class="ml-auto flex gap-1">
+                        <button z-button zSize="sm" zType="ghost" (click)="editAnnouncement(a)">Modifier</button>
+                        <button z-button zSize="sm" zType="ghost" class="text-destructive" [zLoading]="busy() === a.id + ':delete'" (click)="deleteAnnouncement(a)">
+                          Retirer
+                        </button>
+                      </span>
+                    </div>
+                  }
+                </li>
+              }
+            </ul>
+          } @else if (!addingAnnouncement()) {
+            <p class="text-sm text-muted-foreground">Aucune autre info cette semaine.</p>
+          }
+
+          @if (addingAnnouncement()) {
+            <form class="flex flex-col gap-3 rounded-xl border p-4" (submit)="$event.preventDefault(); addAnnouncement()" (keydown.escape)="closeAnnouncementForm()">
+              <label class="flex flex-col gap-1.5 text-sm font-medium">
+                Info
+                <textarea
+                  z-textarea
+                  #announcementInput
+                  name="announcement"
+                  rows="2"
+                  [(ngModel)]="newAnnouncement"
+                  placeholder="Ex. Mise en production jeudi soir, prévenir les clients de l’accompagnement"
+                ></textarea>
+              </label>
+              <div class="flex gap-2">
+                <button z-button type="submit" [zLoading]="busy() === 'announcement'">Ajouter l’info</button>
+                <button z-button type="button" zType="ghost" (click)="closeAnnouncementForm()">Annuler</button>
+              </div>
+            </form>
+          } @else {
+            <div class="flex flex-wrap gap-2">
+              <button z-button zType="outline" (click)="addingAnnouncement.set(true)">Ajouter une info</button>
+              <button z-button zType="ghost" (click)="copyForSlack()">Copier pour Slack</button>
+            </div>
+          }
+        </section>
       }
     </div>
 
@@ -268,6 +367,15 @@ export class WeeklyReviewPage {
   protected readonly longDay = longDay;
   protected readonly bets = computed(() => this.review()?.bets ?? []);
   protected readonly shortTopics = computed(() => this.review()?.shortTopics ?? { pending: [], current: [] });
+
+  protected readonly announcements = computed(() => this.review()?.announcements ?? []);
+  protected readonly summary = computed(() => this.review()?.summary ?? { bets: [], shortTopics: [] });
+  protected readonly addingAnnouncement = signal(false);
+  protected readonly newAnnouncement = signal('');
+  protected readonly editingAnnouncement = signal<string | null>(null);
+  protected readonly announcementDraft = signal('');
+  private readonly announcementInput = viewChild('announcementInput', { read: ElementRef<HTMLTextAreaElement> });
+  private readonly announcementEdit = viewChild('announcementEdit', { read: ElementRef<HTMLTextAreaElement> });
 
   /** The short topic form is folded until someone adds a topic */
   protected readonly adding = signal(false);
@@ -302,6 +410,8 @@ export class WeeklyReviewPage {
   constructor() {
     // Focus the title as soon as the short topic form unfolds.
     effect(() => this.titleInput()?.nativeElement.focus());
+    effect(() => this.announcementInput()?.nativeElement.focus());
+    effect(() => this.announcementEdit()?.nativeElement.focus());
     this.api.quarters().then((qs) => this.quarters.set(qs)).catch(() => {});
     this.load();
   }
@@ -378,6 +488,7 @@ export class WeeklyReviewPage {
       }));
       this.write(b.id, note?.text ?? '');
       this.toast.success(note ? 'Note enregistrée' : 'Note effacée');
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -391,6 +502,7 @@ export class WeeklyReviewPage {
       const updated = await this.api.setStatus(b.id, status);
       this.updateBet(b.id, (x) => ({ ...x, ...updated, notes: x.notes }));
       this.toast.success(status === 'shipped' ? `${b.name} : livré` : `${b.name} : remis en cours`);
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -430,6 +542,7 @@ export class WeeklyReviewPage {
       this.updateShortTopics((s) => ({ ...s, pending: [...s.pending, t] }));
       this.closeForm();
       this.toast.success('Sujet posé');
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -459,6 +572,7 @@ export class WeeklyReviewPage {
         promote: 'devient un pari, en shaping',
       };
       this.toast.success(`${t.name} : ${messages[decision]}`);
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
@@ -472,11 +586,99 @@ export class WeeklyReviewPage {
       const updated = await this.api.setStatus(t.id, status);
       this.updateShortTopics((s) => ({ ...s, current: s.current.map((x) => (x.id === t.id ? updated : x)) }));
       this.toast.success(status === 'shipped' ? `${t.name} : livré` : `${t.name} : remis en cours`);
+      this.refreshSummary();
     } catch (e) {
       this.toast.error(errorMessage(e));
     } finally {
       this.busy.set(null);
     }
+  }
+
+  protected closeAnnouncementForm() {
+    this.addingAnnouncement.set(false);
+    this.newAnnouncement.set('');
+  }
+
+  protected async addAnnouncement() {
+    const text = this.newAnnouncement().trim();
+    if (!text) {
+      this.toast.error('L’info est vide.');
+      return;
+    }
+    this.busy.set('announcement');
+    try {
+      const a = await this.api.addAnnouncement(text);
+      this.updateAnnouncements((l) => [...l, a]);
+      this.closeAnnouncementForm();
+      this.toast.success('Info ajoutée');
+    } catch (e) {
+      this.toast.error(errorMessage(e));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  protected editAnnouncement(a: Announcement) {
+    this.announcementDraft.set(a.text);
+    this.editingAnnouncement.set(a.id);
+  }
+
+  protected async saveAnnouncement(a: Announcement) {
+    this.busy.set(a.id + ':save');
+    try {
+      const updated = await this.api.updateAnnouncement(a.id, this.announcementDraft());
+      this.updateAnnouncements((l) => l.map((x) => (x.id === a.id ? updated : x)));
+      this.editingAnnouncement.set(null);
+      this.toast.success('Info modifiée');
+    } catch (e) {
+      this.toast.error(errorMessage(e));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  protected async deleteAnnouncement(a: Announcement) {
+    this.busy.set(a.id + ':delete');
+    try {
+      await this.api.deleteAnnouncement(a.id);
+      this.updateAnnouncements((l) => l.filter((x) => x.id !== a.id));
+      this.toast.success('Info retirée');
+    } catch (e) {
+      this.toast.error(errorMessage(e));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  protected async copyForSlack() {
+    const r = this.review();
+    if (!r?.cycle) return;
+    const name = this.cycleLabels().get(r.cycle.id)?.split(' (')[0] ?? `Cycle ${r.cycle.number}`;
+    const text = slackMessage(`Point hebdo · ${name}, semaine ${r.week}`, [
+      { heading: 'Paris', lines: r.summary.bets },
+      { heading: 'Sujets courts', lines: r.summary.shortTopics },
+      { heading: 'Autres infos', lines: this.announcements().map((a) => a.text) },
+    ]);
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toast.success('Copié : prêt à coller dans Slack');
+    } catch {
+      this.toast.error('Impossible de copier. Sélectionnez le texte à la main.');
+    }
+  }
+
+  /** The summary follows the notes and decisions: reload it after each of them. */
+  private async refreshSummary() {
+    try {
+      const { summary } = await this.api.weeklyReview();
+      this.review.update((r) => (r ? { ...r, summary } : r));
+    } catch {
+      // The summary will be up to date on the next load.
+    }
+  }
+
+  private updateAnnouncements(f: (l: Announcement[]) => Announcement[]) {
+    this.review.update((r) => (r ? { ...r, announcements: f(r.announcements) } : r));
   }
 
   private updateShortTopics(f: (s: WeeklyReview['shortTopics']) => WeeklyReview['shortTopics']) {

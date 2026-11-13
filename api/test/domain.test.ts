@@ -5,6 +5,7 @@ import {
   checkProject,
   cleanFilename,
   currentCycle,
+  describeChange,
   cycleEnd,
   isInline,
   nextCycle,
@@ -16,6 +17,7 @@ import {
   removeAttachmentLinks,
   suggestedStart,
   weekOf,
+  weekSummary,
 } from '../src/domain';
 
 describe('quarters', () => {
@@ -144,5 +146,37 @@ describe('weekly review', () => {
     expect(currentCycle([a, b], '2026-11-13')).toBeNull();
     expect(nextCycle([b, a], '2026-11-13')?.id).toBe('b');
     expect(nextCycle([a, b], '2026-12-25')).toBeNull();
+  });
+});
+
+describe('week summary', () => {
+  const change = (projectId: string, name: string, from: string | null, to: string, fromFormat = 'short', toFormat = 'short', at = 't1') =>
+    ({ projectId, name, requester: 'Nico', fromStatus: from, toStatus: to, fromFormat, toFormat, at }) as Parameters<typeof weekSummary>[0]['changes'][number];
+
+  it('describes the decisions on short topics', () => {
+    expect(describeChange(change('a', 'A', null, 'received'))).toBe('nouveau sujet posé');
+    expect(describeChange(change('a', 'A', 'received', 'bet'))).toBe('pris dans le cycle');
+    expect(describeChange(change('a', 'A', 'received', 'waiting'))).toBe('pas maintenant');
+    expect(describeChange(change('a', 'A', 'bet', 'shipped'))).toBe('livré');
+    expect(describeChange(change('a', 'A', 'received', 'shaping', 'short', 'bet'))).toBe('devient un pari, en shaping');
+    expect(describeChange(change('a', 'A', null, 'received', 'bet', 'bet'))).toBeNull();
+  });
+
+  it('combines the notes of the bets and the latest decision of each project', () => {
+    const summary = weekSummary({
+      bets: [
+        { id: 'b1', name: 'Import', note: 'Import CSV terminé' },
+        { id: 'b2', name: 'Export', note: null },
+        { id: 'b3', name: 'Relances', note: null },
+      ],
+      changes: [
+        change('b2', 'Export', 'bet', 'shipped', 'bet', 'bet'),
+        change('s1', 'Logo flou', null, 'received', 'short', 'short', 't1'),
+        change('s1', 'Logo flou', 'received', 'bet', 'short', 'short', 't2'),
+        change('s2', 'Bouton rose', 'received', 'dropped'),
+      ],
+    });
+    expect(summary.bets).toEqual(['Import : Import CSV terminé', 'Export : livré']);
+    expect(summary.shortTopics).toEqual(['Logo flou (demandé par Nico) : pris dans le cycle', 'Bouton rose (demandé par Nico) : écarté']);
   });
 });
