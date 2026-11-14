@@ -37,4 +37,4 @@ Après un changement de `api/src/db/schema.ts` : `npm run db:generate`, puis vé
 
 ## Dépôt public
 
-Aucun secret, identifiant de compte ou donnée réelle dans le dépôt. Les réglages Cloudflare (`ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `database_id` réel) vivent dans le tableau de bord.
+Aucun secret, identifiant de compte ou donnée réelle dans le dépôt. Les réglages Cloudflare (`ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`) vivent dans le tableau de bord ; la base D1 et le bucket R2 sont retrouvés par leur nom (pas de `database_id` dans `wrangler.jsonc`). Chaque merge sur `main` est déployé par Workers Builds (`npm run deploy`, qui applique aussi les migrations D1) : une migration doit rester compatible avec le code déjà en ligne.

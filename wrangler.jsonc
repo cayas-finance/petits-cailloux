@@ -1,11 +1,16 @@
 // A single Worker serves the Angular UI (static assets) and the API (/api/*).
 // No secrets here: the repository is public. ACCESS_TEAM_DOMAIN and ACCESS_AUD
-// are set in the Cloudflare dashboard (Worker variables).
+// are set in the Cloudflare dashboard (Worker variables); keep_vars stops a
+// deploy from erasing them. The D1 database and the R2 bucket are found by
+// name, so their account identifiers stay out of the repository.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "petits-cailloux",
   "main": "api/src/index.ts",
   "compatibility_date": "2026-11-01",
+  "keep_vars": true,
+  // No public URL per version: only the production URL, behind Access.
+  "preview_urls": false,
   "assets": {
     "directory": "web/dist/web/browser",
     "not_found_handling": "single-page-application",
@@ -18,15 +23,12 @@
     {
       "binding": "DB",
       "database_name": "petits-cailloux",
-      // À remplacer par l'identifiant affiché par `npx wrangler d1 create petits-cailloux`
-      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "api/migrations"
     }
   ],
   "r2_buckets": [
     {
       "binding": "ATTACHMENTS",
-      // À créer avec `npx wrangler r2 bucket create petits-cailloux-attachments`
       "bucket_name": "petits-cailloux-attachments"
     }
   ],
