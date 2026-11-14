@@ -196,7 +196,6 @@ export interface WeeklyReview {
   summary: { bets: string[]; shortTopics: string[] };
 }
 
-export const MAX_GOALS = 2;
 export const MAX_CYCLES = 3;
 
 /** User-facing error message, taken from the API response */
