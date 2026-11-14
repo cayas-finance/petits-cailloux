@@ -32,6 +32,13 @@ import { Api } from './core/api';
             >Point hebdo</a
           >
           <a
+            routerLink="/log"
+            routerLinkActive
+            ariaCurrentWhenActive="page"
+            class="border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
+            >Journal</a
+          >
+          <a
             routerLink="/projects"
             routerLinkActive
             ariaCurrentWhenActive="page"

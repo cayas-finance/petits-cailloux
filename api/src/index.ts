@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, eq, desc, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, desc, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { authenticate } from './auth';
 import type { Env } from './env';
 import * as schema from './db/schema';
@@ -20,6 +20,8 @@ import {
   currentCycle,
   cycleEnd,
   isInline,
+  logDecision,
+  logWeeks,
   nextCycle,
   numberCycles,
   PROJECT_FORMATS,
@@ -735,6 +737,86 @@ app.patch('/announcements/:id', validate('json', announcementBody), async (c) =>
 app.delete('/announcements/:id', async (c) => {
   await database(c).delete(announcements).where(eq(announcements.id, c.req.param('id')));
   return c.body(null, 204);
+});
+
+/* ---------- Decision log ---------- */
+
+/**
+ * The decision log of a quarter: each started week of its cycles, most recent first,
+ * with the decisions, progress notes and announcements of that weekly review.
+ * Decisions taken between two cycles are listed apart, by date.
+ */
+app.get('/log/:quarterId', async (c) => {
+  const db = database(c);
+  const q = await db.query.quarters.findFirst({ where: eq(quarters.id, c.req.param('quarterId')) });
+  if (!q) return c.json({ error: 'Trimestre introuvable.' }, 404);
+  const qCycles = numberCycles(await db.select().from(cycles).where(eq(cycles.quarterId, q.id)));
+  const cycleIds = qCycles.map((x) => x.id);
+
+  const changeColumns = {
+    id: projectChanges.id,
+    projectId: projectChanges.projectId,
+    cycleId: projectChanges.cycleId,
+    week: projectChanges.week,
+    fromStatus: projectChanges.fromStatus,
+    toStatus: projectChanges.toStatus,
+    fromFormat: projectChanges.fromFormat,
+    toFormat: projectChanges.toFormat,
+    at: projectChanges.createdAt,
+    by: projectChanges.createdBy,
+    name: projects.name,
+    requester: projects.requester,
+  };
+  const inCycles = cycleIds.length ? inArray(projectChanges.cycleId, cycleIds) : undefined;
+  const between = and(
+    isNull(projectChanges.cycleId),
+    gte(projectChanges.createdAt, q.startsOn),
+    // Dates are ISO strings: the whole last day is before the day after.
+    lte(projectChanges.createdAt, `${q.endsOn}T23:59:59.999Z`),
+  );
+  const changes = await db
+    .select(changeColumns)
+    .from(projectChanges)
+    .innerJoin(projects, eq(projects.id, projectChanges.projectId))
+    .where(inCycles ? or(inCycles, between) : between)
+    .orderBy(asc(projectChanges.createdAt));
+  const decisions = changes.flatMap(({ fromStatus, toStatus, fromFormat, toFormat, ...rest }) => {
+    const text = logDecision({ fromStatus, toStatus, fromFormat, toFormat });
+    return text ? [{ ...rest, format: toFormat, text }] : [];
+  });
+
+  const notes = cycleIds.length
+    ? await db
+        .select({
+          id: progressNotes.id,
+          projectId: progressNotes.projectId,
+          cycleId: progressNotes.cycleId,
+          week: progressNotes.week,
+          text: progressNotes.text,
+          updatedAt: progressNotes.updatedAt,
+          updatedBy: progressNotes.updatedBy,
+          name: projects.name,
+        })
+        .from(progressNotes)
+        .innerJoin(projects, eq(projects.id, progressNotes.projectId))
+        .where(inArray(progressNotes.cycleId, cycleIds))
+    : [];
+  const infos = cycleIds.length
+    ? await db.select().from(announcements).where(inArray(announcements.cycleId, cycleIds)).orderBy(asc(announcements.createdAt))
+    : [];
+
+  const inWeek = (w: { cycleId: string; week: number }) => (x: { cycleId: string | null; week: number | null }) =>
+    x.cycleId === w.cycleId && x.week === w.week;
+  return c.json({
+    weeks: logWeeks(qCycles, toDay(new Date())).map((w) => ({
+      ...w,
+      decisions: decisions.filter(inWeek(w)),
+      notes: notes.filter(inWeek(w)).sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+      announcements: infos.filter(inWeek(w)),
+    })),
+    // Decisions dated in no cycle, most recent first
+    outside: decisions.filter((d) => d.cycleId === null).reverse(),
+  });
 });
 
 app.all('*', (c) => c.json({ error: 'Route inconnue.' }, 404));

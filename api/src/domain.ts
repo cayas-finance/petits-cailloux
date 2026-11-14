@@ -276,3 +276,29 @@ export function weekSummary(input: {
   }
   return { bets, shortTopics };
 }
+
+/* ---------- Decision log ---------- */
+
+/** What a change means in the decision log: every change is kept, even those not shared on Slack. */
+export function logDecision(e: StatusChange): string | null {
+  if (e.fromStatus === null) return e.toFormat === 'short' ? 'nouveau sujet posé' : 'nouveau projet';
+  if (e.fromFormat === 'bet' && e.toFormat === 'short') return 'devient un sujet court';
+  if (e.fromStatus !== e.toStatus && e.toStatus === 'received') return 'remis en reçu';
+  return describeChange(e);
+}
+
+/**
+ * The weekly reviews of a quarter, most recent first: every week of its cycles
+ * that has started by that day.
+ */
+export function logWeeks(
+  cycles: { id: string; number: number; startsOn: Day; endsOn: Day }[],
+  day: Day,
+): { cycleId: string; cycle: number; week: number; startsOn: Day }[] {
+  const weeks = cycles.flatMap((c) =>
+    [1, 2, 3, 4]
+      .map((week) => ({ cycleId: c.id, cycle: c.number, week, startsOn: addDays(c.startsOn, (week - 1) * 7) }))
+      .filter((w) => w.startsOn <= day),
+  );
+  return weeks.sort((a, b) => b.startsOn.localeCompare(a.startsOn));
+}

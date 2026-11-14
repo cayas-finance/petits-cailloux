@@ -4,7 +4,7 @@ import { ZardBadgeComponent } from '@/shared/components/badge';
 import { ZardSelectImports } from '@/shared/components/select';
 import { ZardSonnerService } from '@/shared/components/sonner';
 import { Api, Cycle, Project, Quarter, errorMessage } from '../core/api';
-import { quarterLabel, shortDay, today } from '../core/dates';
+import { defaultQuarter, quarterLabel, shortDay, today } from '../core/dates';
 import { ProjectPanelComponent } from './project-panel.component';
 
 /** Statuses shown in the "Prochainement" column, in this order */
@@ -213,8 +213,3 @@ export class RoadmapPage {
   }
 }
 
-/** The quarter running today, otherwise the next one, otherwise the last one. */
-function defaultQuarter(quarters: Quarter[]): Quarter | undefined {
-  const t = today();
-  return quarters.find((q) => q.startsOn <= t && t <= q.endsOn) ?? quarters.find((q) => q.startsOn > t) ?? quarters.at(-1);
-}

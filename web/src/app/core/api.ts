@@ -132,6 +132,51 @@ export interface Announcement {
   updatedBy: string;
 }
 
+/** A decision of the log: a change of status or format, dated and signed */
+export interface LogDecision {
+  id: string;
+  projectId: string;
+  cycleId: string | null;
+  week: number | null;
+  name: string;
+  format: Format;
+  requester: string;
+  /** What was decided, in French */
+  text: string;
+  at: string;
+  by: string;
+}
+
+export interface LogNote {
+  id: string;
+  projectId: string;
+  cycleId: string;
+  week: number;
+  name: string;
+  text: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/** One past weekly review of the decision log */
+export interface LogWeek {
+  cycleId: string;
+  cycle: number;
+  week: number;
+  /** Monday of that week */
+  startsOn: string;
+  decisions: LogDecision[];
+  notes: LogNote[];
+  announcements: Announcement[];
+}
+
+export interface DecisionLog {
+  /** Most recent first */
+  weeks: LogWeek[];
+  /** Decisions taken between two cycles, most recent first */
+  outside: LogDecision[];
+}
+
 export interface WeeklyReview {
   cycle: Cycle | null;
   /** Week 1 to 4 when the cycle is running, otherwise null */
@@ -242,6 +287,10 @@ export class Api {
   }
   deleteAttachment(id: string) {
     return firstValueFrom(this.http.delete<Project | null>(`/api/attachments/${id}`));
+  }
+
+  log(quarterId: string) {
+    return firstValueFrom(this.http.get<DecisionLog>(`/api/log/${quarterId}`));
   }
 
   weeklyReview() {

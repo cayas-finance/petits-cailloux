@@ -91,7 +91,7 @@ export class ProjectPanelComponent {
   /** Quarters already loaded by the page, to name the goals */
   readonly quarters = input<Quarter[]>([]);
   /** Page the panel is opened from, for the back link of the full pages */
-  readonly from = input<'weekly-review' | 'roadmap'>('weekly-review');
+  readonly from = input<'weekly-review' | 'roadmap' | 'log'>('weekly-review');
   readonly closed = output<void>();
 
   protected readonly attachments = signal<Attachment[]>([]);

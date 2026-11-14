@@ -12,6 +12,7 @@ export function statusBadgeType(s: Status): ZardBadgeTypeVariants {
 export const BACK_LINKS: Record<string, { url: string; label: string }> = {
   'weekly-review': { url: '/weekly-review', label: 'Point hebdo' },
   roadmap: { url: '/roadmap', label: 'Roadmap' },
+  log: { url: '/log', label: 'Journal' },
 };
 
 /** "T4 2026 · cycle 1" from the quarter id (e.g. 2026-Q4). */
