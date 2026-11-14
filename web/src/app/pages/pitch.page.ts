@@ -6,7 +6,7 @@ import { ZardSonnerService } from '@/shared/components/sonner';
 import { Api, Attachment, FORMATS, Project, Quarter, errorMessage, statusLabel } from '../core/api';
 import { shortDay } from '../core/dates';
 import { PitchViewComponent } from '../pitch/pitch-view.component';
-import { cycleLabel, statusBadgeType } from './project-labels';
+import { BACK_LINKS, cycleLabel, statusBadgeType } from './project-labels';
 
 /** The pitch alone, read-only: to read it before the betting table or to share it. */
 @Component({
@@ -16,8 +16,8 @@ import { cycleLabel, statusBadgeType } from './project-labels';
     @if (project(); as p) {
       <div class="mx-auto flex max-w-3xl flex-col gap-6">
         <div class="flex flex-wrap items-center justify-between gap-2 print:hidden">
-          @if (from() === 'weekly-review') {
-            <a routerLink="/weekly-review" class="text-sm text-muted-foreground hover:text-foreground">← Point hebdo</a>
+          @if (back(); as b) {
+            <a [routerLink]="b.url" class="text-sm text-muted-foreground hover:text-foreground">← {{ b.label }}</a>
           } @else {
             <a [routerLink]="['/projects', p.id]" class="text-sm text-muted-foreground hover:text-foreground">← Fiche du projet</a>
           }
@@ -80,8 +80,9 @@ export class PitchPage {
   private readonly toast = inject(ZardSonnerService);
 
   readonly id = input.required<string>();
-  /** ?from=weekly-review: the back link returns to the weekly review */
+  /** ?from=weekly-review or roadmap: the back link returns to that page */
   readonly from = input<string>();
+  protected readonly back = computed(() => BACK_LINKS[this.from() ?? '']);
 
   protected readonly project = signal<Project | null>(null);
   protected readonly attachments = signal<Attachment[]>([]);

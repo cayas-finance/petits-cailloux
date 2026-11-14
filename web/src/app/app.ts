@@ -18,6 +18,13 @@ import { Api } from './core/api';
         }
         <nav class="-mb-px flex w-full gap-1 overflow-x-auto" aria-label="Navigation principale">
           <a
+            routerLink="/roadmap"
+            routerLinkActive
+            ariaCurrentWhenActive="page"
+            class="border-b-2 border-transparent px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
+            >Roadmap</a
+          >
+          <a
             routerLink="/weekly-review"
             routerLinkActive
             ariaCurrentWhenActive="page"

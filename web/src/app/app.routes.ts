@@ -1,7 +1,12 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'weekly-review' },
+  { path: '', pathMatch: 'full', redirectTo: 'roadmap' },
+  {
+    path: 'roadmap',
+    title: 'Roadmap · Petits cailloux',
+    loadComponent: () => import('./pages/roadmap.page').then((m) => m.RoadmapPage),
+  },
   {
     path: 'quarters',
     title: 'Trimestres · Petits cailloux',
@@ -37,5 +42,5 @@ export const routes: Routes = [
     title: 'Point hebdo · Petits cailloux',
     loadComponent: () => import('./pages/weekly-review.page').then((m) => m.WeeklyReviewPage),
   },
-  { path: '**', redirectTo: 'weekly-review' },
+  { path: '**', redirectTo: 'roadmap' },
 ];

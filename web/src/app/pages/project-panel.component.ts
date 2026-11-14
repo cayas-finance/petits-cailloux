@@ -9,8 +9,8 @@ import { PitchViewComponent } from '../pitch/pitch-view.component';
 import { cycleLabel, statusBadgeType } from './project-labels';
 
 /**
- * A project shown in a side panel, read-only, so the weekly review stays in place.
- * The full page is one link away, with a way back to the weekly review.
+ * A project shown in a side panel, read-only, so the page behind it stays in place.
+ * The full page is one link away, with a way back to the page it was opened from.
  */
 @Component({
   selector: 'app-project-panel',
@@ -74,10 +74,10 @@ import { cycleLabel, statusBadgeType } from './project-labels';
       </div>
 
       <footer class="flex flex-wrap gap-2 border-t px-5 py-3">
-        <a z-button zType="outline" [routerLink]="['/projects', project().id]" [queryParams]="{ from: 'weekly-review' }">
+        <a z-button zType="outline" [routerLink]="['/projects', project().id]" [queryParams]="{ from: from() }">
           Ouvrir la fiche
         </a>
-        <a z-button zType="ghost" [routerLink]="['/projects', project().id, 'pitch']" [queryParams]="{ from: 'weekly-review' }">
+        <a z-button zType="ghost" [routerLink]="['/projects', project().id, 'pitch']" [queryParams]="{ from: from() }">
           {{ project().format === 'short' ? 'Lire le sujet seul' : 'Lire le pitch seul' }}
         </a>
       </footer>
@@ -90,6 +90,8 @@ export class ProjectPanelComponent {
   readonly project = input.required<Project>();
   /** Quarters already loaded by the page, to name the goals */
   readonly quarters = input<Quarter[]>([]);
+  /** Page the panel is opened from, for the back link of the full pages */
+  readonly from = input<'weekly-review' | 'roadmap'>('weekly-review');
   readonly closed = output<void>();
 
   protected readonly attachments = signal<Attachment[]>([]);
