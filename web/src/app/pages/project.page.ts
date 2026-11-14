@@ -25,6 +25,7 @@ import {
 import { longDay, quarterLabel, shortDay } from '../core/dates';
 import { PitchEditorComponent, removeLink } from '../pitch/pitch-editor.component';
 import { PitchViewComponent } from '../pitch/pitch-view.component';
+import { BACK_LINKS } from './project-labels';
 
 const NONE = 'none';
 const TEMPLATE_TITLE = '[Titre court du sujet]';
@@ -43,8 +44,8 @@ const TEMPLATE_TITLE = '[Titre court du sujet]';
     PitchViewComponent,
   ],
   template: `
-    @if (from() === 'weekly-review') {
-      <a routerLink="/weekly-review" class="text-sm text-muted-foreground hover:text-foreground">← Point hebdo</a>
+    @if (back(); as b) {
+      <a [routerLink]="b.url" class="text-sm text-muted-foreground hover:text-foreground">← {{ b.label }}</a>
     } @else {
       <a routerLink="/projects" class="text-sm text-muted-foreground hover:text-foreground">← Tous les projets</a>
     }
@@ -291,8 +292,9 @@ export class ProjectPage {
   readonly id = input<string>();
   /** ?pitch=edit opens the editor directly */
   readonly pitch = input<string>();
-  /** ?from=weekly-review: the back link returns to the weekly review */
+  /** ?from=weekly-review or roadmap: the back link returns to that page */
   readonly from = input<string>();
+  protected readonly back = computed(() => BACK_LINKS[this.from() ?? '']);
 
   protected readonly none = NONE;
   protected readonly formats = FORMATS;

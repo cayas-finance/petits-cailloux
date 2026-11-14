@@ -3,6 +3,11 @@ import { Routes } from '@angular/router';
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'weekly-review' },
   {
+    path: 'roadmap',
+    title: 'Roadmap · Petits cailloux',
+    loadComponent: () => import('./pages/roadmap.page').then((m) => m.RoadmapPage),
+  },
+  {
     path: 'quarters',
     title: 'Trimestres · Petits cailloux',
     loadComponent: () => import('./pages/quarters.page').then((m) => m.QuartersPage),
