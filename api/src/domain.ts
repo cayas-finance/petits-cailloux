@@ -2,7 +2,6 @@
 // A quarter has 1 or 2 goals and at most 3 cycles of 4 weeks.
 // Error messages are user-facing, hence in French.
 
-export const MAX_GOALS = 2;
 export const MAX_CYCLES = 3;
 export const CYCLE_LENGTH_DAYS = 28;
 

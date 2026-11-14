@@ -9,7 +9,6 @@ import * as schema from './db/schema';
 import { announcements, attachments, cycles, goals, progressNotes, projectChanges, projectGoals, projects, quarters } from './db/schema';
 import {
   MAX_ATTACHMENT_SIZE,
-  MAX_GOALS,
   MAX_PITCH_LENGTH,
   PROJECT_STATUSES,
   TEMPLATE_TITLE,
@@ -153,10 +152,6 @@ app.post('/quarters/:id/goals', validate('json', z.object({ title, description: 
   const db = database(c);
   if (!(await db.query.quarters.findFirst({ where: eq(quarters.id, qId) }))) {
     return c.json({ error: 'Trimestre introuvable.' }, 404);
-  }
-  const existing = await db.select().from(goals).where(eq(goals.quarterId, qId));
-  if (existing.length >= MAX_GOALS) {
-    return c.json({ error: `Un trimestre porte au plus ${MAX_GOALS} objectifs.` }, 409);
   }
   const body = c.req.valid('json');
   await db.insert(goals).values({

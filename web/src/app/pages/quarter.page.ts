@@ -9,7 +9,7 @@ import { ZardTextareaComponent } from '@/shared/components/textarea';
 import { ZardTableImports } from '@/shared/components/table';
 import { ZardSonnerService } from '@/shared/components/sonner';
 import { ZardAlertDialogService } from '@/shared/components/alert-dialog';
-import { Api, Cycle, Goal, MAX_CYCLES, MAX_GOALS, Quarter, errorMessage } from '../core/api';
+import { Api, Cycle, Goal, MAX_CYCLES, Quarter, errorMessage } from '../core/api';
 import { cycleWeek, isRunning, longDay, quarterLabel, shortDay } from '../core/dates';
 
 @Component({
@@ -47,7 +47,7 @@ import { cycleWeek, isRunning, longDay, quarterLabel, shortDay } from '../core/d
           <z-card-header>
             <z-card-title>Objectifs du trimestre</z-card-title>
             <z-card-description>
-              1 ou 2 objectifs. Chaque pitch dira lequel il sert ; un pitch qui n’en sert aucun ne passe pas, sauf exception assumée.
+              Un cap clair, en peu d’objectifs. Chaque pitch dira lequel il sert ; un pitch qui n’en sert aucun ne passe pas, sauf exception assumée.
             </z-card-description>
           </z-card-header>
           <z-card-content class="flex flex-col gap-3">
@@ -83,16 +83,12 @@ import { cycleWeek, isRunning, longDay, quarterLabel, shortDay } from '../core/d
               <p class="text-sm text-amber-700 dark:text-amber-400">Aucun objectif pour l’instant.</p>
             }
 
-            @if (q.goals.length < maxGoals) {
-              <form class="flex flex-col gap-2 border-t pt-3" (submit)="$event.preventDefault(); addGoal()">
-                <label class="text-sm font-medium" for="new-goal">{{ q.goals.length ? 'Second objectif (facultatif)' : 'Premier objectif' }}</label>
-                <input z-input id="new-goal" [(ngModel)]="newTitle" name="title" placeholder="Ex. Réduire le temps de prise en main" />
-                <textarea z-textarea rows="2" [(ngModel)]="newDescription" name="description" aria-label="Description de l’objectif" placeholder="Ce que ça change, comment on le mesure (facultatif)"></textarea>
-                <div><button z-button type="submit" [zLoading]="busy()">Ajouter l’objectif</button></div>
-              </form>
-            } @else {
-              <p class="text-sm text-muted-foreground">Le trimestre a ses {{ maxGoals }} objectifs. Retirez-en un pour en changer.</p>
-            }
+            <form class="flex flex-col gap-2 border-t pt-3" (submit)="$event.preventDefault(); addGoal()">
+              <label class="text-sm font-medium" for="new-goal">{{ q.goals.length ? 'Autre objectif' : 'Premier objectif' }}</label>
+              <input z-input id="new-goal" [(ngModel)]="newTitle" name="title" placeholder="Ex. Réduire le temps de prise en main" />
+              <textarea z-textarea rows="2" [(ngModel)]="newDescription" name="description" aria-label="Description de l’objectif" placeholder="Ce que ça change, comment on le mesure (facultatif)"></textarea>
+              <div><button z-button type="submit" [zLoading]="busy()">Ajouter l’objectif</button></div>
+            </form>
           </z-card-content>
         </z-card>
 
@@ -174,7 +170,6 @@ export class QuarterPage {
   /** Route parameter */
   readonly id = input.required<string>();
 
-  protected readonly maxGoals = MAX_GOALS;
   protected readonly maxCycles = MAX_CYCLES;
   protected readonly quarter = signal<Quarter | null>(null);
   protected readonly notFound = signal(false);

@@ -7,7 +7,7 @@ Outil interne de Cayas pour la méthode produit **Petit Poucet** : cap trimestri
 - **Journal** : chaque point hebdo passé, avec ses décisions datées et signées.
 - **Projets** : paris (avec pitch) et sujets courts, filtre des candidats à la betting table.
 - **Serveur MCP** : rédiger un pitch avec une IA (Claude, etc.), qui lit les objectifs et les projets et enregistre le pitch.
-- **Trimestres et cycles** : 1 ou 2 objectifs, 3 cycles de 4 semaines au plus. Un cycle commence un lundi, pendant le trimestre, sans chevaucher un autre cycle.
+- **Trimestres et cycles** : des objectifs (O1, O2…), 3 cycles de 4 semaines au plus. Un cycle commence un lundi, pendant le trimestre, sans chevaucher un autre cycle.
 
 ## Stack
 

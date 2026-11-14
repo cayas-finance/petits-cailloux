@@ -21,7 +21,7 @@ Outil interne de Cayas pour la méthode produit Petit Poucet.
 
 ## Règles de la méthode appliquées par l'outil
 
-- Un trimestre : 1 ou 2 objectifs, 3 cycles de 4 semaines au plus.
+- Un trimestre : des objectifs (pas de limite de nombre depuis le 2026-11-14), 3 cycles de 4 semaines au plus.
 - Un cycle commence un lundi, pendant le trimestre, sans chevaucher un autre cycle.
 - Pas de mesure du temps passé.
 

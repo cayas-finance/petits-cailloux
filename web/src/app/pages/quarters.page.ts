@@ -6,7 +6,7 @@ import { ZardBadgeComponent } from '@/shared/components/badge';
 import { ZardCardImports } from '@/shared/components/card';
 import { ZardSelectImports } from '@/shared/components/select';
 import { ZardSonnerService } from '@/shared/components/sonner';
-import { Api, MAX_CYCLES, MAX_GOALS, Quarter, errorMessage } from '../core/api';
+import { Api, MAX_CYCLES, Quarter, errorMessage } from '../core/api';
 import { currentQuarter, isRunning, quarterLabel, shortDay } from '../core/dates';
 
 @Component({
@@ -18,7 +18,7 @@ import { currentQuarter, isRunning, quarterLabel, shortDay } from '../core/dates
         <div>
           <h1 class="text-xl font-bold">Trimestres</h1>
           <p class="text-sm text-muted-foreground">
-            Chaque trimestre porte 1 ou 2 objectifs et se découpe en {{ maxCycles }} cycles de 4 semaines.
+            Chaque trimestre porte ses objectifs et se découpe en {{ maxCycles }} cycles de 4 semaines.
           </p>
         </div>
       </div>
@@ -82,7 +82,7 @@ import { currentQuarter, isRunning, quarterLabel, shortDay } from '../core/dates
                     <p class="text-amber-700 dark:text-amber-400">Aucun objectif fixé</p>
                   }
                   <p class="text-muted-foreground">
-                    {{ q.goals.length }}/{{ maxGoals }} objectifs · {{ q.cycles.length }}/{{ maxCycles }} cycles
+                    {{ q.goals.length }} objectif{{ q.goals.length > 1 ? 's' : '' }} · {{ q.cycles.length }}/{{ maxCycles }} cycles
                   </p>
                 </z-card-content>
               </z-card>
@@ -98,7 +98,6 @@ export class QuartersPage {
   private readonly router = inject(Router);
   private readonly toast = inject(ZardSonnerService);
 
-  protected readonly maxGoals = MAX_GOALS;
   protected readonly maxCycles = MAX_CYCLES;
   protected readonly quarters = signal<Quarter[]>([]);
   protected readonly loading = signal(true);

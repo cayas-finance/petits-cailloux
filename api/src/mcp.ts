@@ -5,7 +5,7 @@ import { z } from 'zod';
 import api from './index';
 import type { Bindings } from './env';
 
-const INSTRUCTIONS = `Petits cailloux est l'outil de Cayas pour la méthode produit « Petit Poucet » : un cap par trimestre (1 ou 2 objectifs), des cycles de 4 semaines, et des paris décrits par un pitch.
+const INSTRUCTIONS = `Petits cailloux est l'outil de Cayas pour la méthode produit « Petit Poucet » : un cap par trimestre (ses objectifs : O1, O2…), des cycles de 4 semaines, et des paris décrits par un pitch.
 
 Pour aider à rédiger un pitch :
 1. Lis le modèle du guide (get_pitch_template) et les objectifs du trimestre (list_quarters).
@@ -68,7 +68,7 @@ function buildServer(url: string, env: Bindings, ctx: ExecutionContext) {
     'list_quarters',
     {
       title: 'Trimestres et objectifs',
-      description: 'Liste les trimestres, avec leurs objectifs (O1, O2) et leurs cycles.',
+      description: 'Liste les trimestres, avec leurs objectifs (O1, O2…) et leurs cycles.',
       annotations: { readOnlyHint: true },
     },
     async () =>
