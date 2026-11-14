@@ -36,6 +36,7 @@ import { cycleLabel, statusBadgeType } from './project-labels';
           Statut
           <z-select class="w-56" [(zValue)]="filter" zPlaceholder="Tous">
             <z-select-item zValue="all">Tous</z-select-item>
+            <z-select-item zValue="candidates">Candidats à la betting table</z-select-item>
             @for (s of statuses; track s[0]) {
               <z-select-item [zValue]="s[0]">{{ s[1] }}</z-select-item>
             }
@@ -118,7 +119,7 @@ export class ProjectsPage {
 
   protected readonly visible = computed(() =>
     this.projects().filter(
-      (p) => (this.filter() === 'all' || p.status === this.filter()) && (this.formatFilter() === 'all' || p.format === this.formatFilter()),
+      (p) => this.matchesStatus(p) && (this.formatFilter() === 'all' || p.format === this.formatFilter()),
     ),
   );
   private readonly goals = computed(
@@ -129,6 +130,14 @@ export class ProjectsPage {
   protected readonly badge = statusBadgeType;
   protected readonly cycle = cycleLabel;
   protected readonly statusLabel = statusLabel;
+
+  /** Candidates to the betting table: bets with a ready pitch, or waiting for the next cycle */
+  private matchesStatus(p: Project) {
+    const f = this.filter();
+    if (f === 'all') return true;
+    if (f === 'candidates') return p.format === 'bet' && (p.status === 'ready' || p.status === 'waiting');
+    return p.status === f;
+  }
   protected goalTitle(id: string) {
     return this.goals().get(id) ?? '?';
   }
