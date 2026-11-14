@@ -1,4 +1,5 @@
-// A single Worker serves the Angular UI (static assets) and the API (/api/*).
+// A single Worker serves the Angular UI (static assets), the API (/api/*) and the
+// MCP server for AI clients (/mcp, with its OAuth endpoints): see api/src/worker.ts.
 // No secrets here: the repository is public. ACCESS_TEAM_DOMAIN and ACCESS_AUD
 // are set in the Cloudflare dashboard (Worker variables); keep_vars stops a
 // deploy from erasing them. The D1 database and the R2 bucket are found by
@@ -6,15 +7,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "petits-cailloux",
-  "main": "api/src/index.ts",
+  "main": "api/src/worker.ts",
   "compatibility_date": "2026-11-01",
   "keep_vars": true,
+  // Outbound fetches only reach public addresses: required to read MCP clients' metadata safely.
+  "compatibility_flags": ["global_fetch_strictly_public"],
   // No public URL per version: only the production URL, behind Access.
   "preview_urls": false,
   "assets": {
     "directory": "web/dist/web/browser",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/mcp", "/mcp/*", "/authorize", "/token", "/register", "/.well-known/*"]
   },
   "vars": {
     "ALLOWED_DOMAIN": "cayas.fr"
@@ -30,6 +33,12 @@
     {
       "binding": "ATTACHMENTS",
       "bucket_name": "petits-cailloux-attachments"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      // OAuth grants and tokens of the MCP server, created on the first deploy.
+      "binding": "OAUTH_KV"
     }
   ],
   "observability": { "enabled": true }

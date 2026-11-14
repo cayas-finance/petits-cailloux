@@ -6,6 +6,7 @@ Outil interne de Cayas pour la méthode produit **Petit Poucet** : cap trimestri
 - **Point hebdo** : notes de suivi des paris, décisions sur les sujets courts, infos à diffuser copiables pour Slack.
 - **Journal** : chaque point hebdo passé, avec ses décisions datées et signées.
 - **Projets** : paris (avec pitch) et sujets courts, filtre des candidats à la betting table.
+- **Serveur MCP** : rédiger un pitch avec une IA (Claude, etc.), qui lit les objectifs et les projets et enregistre le pitch.
 - **Trimestres et cycles** : 1 ou 2 objectifs, 3 cycles de 4 semaines au plus. Un cycle commence un lundi, pendant le trimestre, sans chevaucher un autre cycle.
 
 ## Stack
@@ -15,7 +16,8 @@ Outil interne de Cayas pour la méthode produit **Petit Poucet** : cap trimestri
 | Interface | Angular (composants autonomes, signals) + [Zard UI](https://zardui.com) sur Tailwind v4, dans `web/` |
 | API | Cloudflare Worker avec [Hono](https://hono.dev), dans `api/` |
 | Données | Cloudflare D1 (SQLite) avec [Drizzle](https://orm.drizzle.team), migrations dans `api/migrations/` |
-| Accès | Cloudflare Access + Google Workspace, réservé aux adresses `@cayas.fr` |
+| Accès | Cloudflare Access, réservé aux adresses `@cayas.fr` |
+| IA | Serveur MCP sur `/mcp` ([SDK MCP](https://github.com/modelcontextprotocol/typescript-sdk)), OAuth avec [workers-oauth-provider](https://github.com/cloudflare/workers-oauth-provider) |
 
 Un seul Worker sert l'interface (fichiers statiques) et l'API (`/api/*`). Voir `wrangler.jsonc`.
 
@@ -81,6 +83,22 @@ Par défaut, on se connecte avec un code reçu par mail (*One-time PIN*). Pour s
 2. l'ajouter dans Zero Trust → Settings → Authentication → Login methods → **Google Workspace**.
 
 Le Worker vérifie la signature du jeton Access à chaque appel et refuse toute adresse hors `@cayas.fr`. Sans les deux variables, l'API refuse tout.
+
+### 4. Brancher une IA (serveur MCP, une fois)
+
+Le serveur MCP est sur `https://<adresse de l'outil>/mcp`. Un outil d'IA ne sait pas passer l'écran de Cloudflare Access : il se connecte par OAuth, et chacun autorise l'accès une fois depuis son navigateur, avec son adresse `@cayas.fr`. La page d'autorisation (`/authorize`) reste derrière Access.
+
+**Exception Access** (Zero Trust → Contrôles Access → Applications → Ajouter une application → *Self-hosted*) :
+
+- nom : `petits-cailloux MCP` ;
+- destinations, toutes sur le domaine de l'outil : chemins `mcp`, `token`, `register` et `.well-known/*` ;
+- politique : action **Bypass** (Contourner), règle *Inclure → Everyone*.
+
+Ces chemins ne donnent rien sans jeton OAuth : le Worker vérifie chaque appel, et les jetons ne s'obtiennent qu'après connexion Access et autorisation.
+
+**Dans Claude** : Paramètres → Connecteurs → *Ajouter un connecteur personnalisé*, URL `https://<adresse de l'outil>/mcp`. Dans Claude Code : `claude mcp add --transport http petits-cailloux https://<adresse de l'outil>/mcp`.
+
+L'IA peut lire les trimestres, les objectifs et les projets, créer un pari et rédiger un pitch. Elle ne peut ni supprimer ni changer un statut. Chaque modification porte l'adresse de la personne qui l'a autorisée.
 
 ### Déployer à la main (dépannage)
 

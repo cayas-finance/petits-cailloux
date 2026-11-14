@@ -1,6 +1,6 @@
 import { createMiddleware } from 'hono/factory';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import type { Env } from './env';
+import type { Bindings, Env } from './env';
 
 // Cloudflare Access protects the site in front of the Worker. The Worker still
 // verifies the signed token Access adds to every request, so it never trusts a
@@ -16,31 +16,37 @@ function jwks(teamDomain: string) {
   return set;
 }
 
-export const authenticate = createMiddleware<Env>(async (c, next) => {
-  const domain = (c.env.ALLOWED_DOMAIN || 'cayas.fr').toLowerCase();
+export type Identity = { email: string } | { error: string; status: 401 | 403 };
 
+/** The signed-in Cayas user of a browser request, from its Cloudflare Access token. */
+export async function identify(request: Request, env: Bindings): Promise<Identity> {
+  const domain = (env.ALLOWED_DOMAIN || 'cayas.fr').toLowerCase();
+
+  // The MCP server, for a user it has already authenticated (see env.ts).
+  if (env.ACTING_EMAIL) return { email: env.ACTING_EMAIL.toLowerCase() };
   // Local development only: DEV_EMAIL is set in .dev.vars, never in production.
-  if (c.env.DEV_EMAIL) {
-    c.set('email', c.env.DEV_EMAIL.toLowerCase());
-    return next();
-  }
+  if (env.DEV_EMAIL) return { email: env.DEV_EMAIL.toLowerCase() };
 
-  const token = c.req.header('cf-access-jwt-assertion');
-  if (!token || !c.env.ACCESS_TEAM_DOMAIN || !c.env.ACCESS_AUD) {
-    return c.json({ error: 'Accès réservé. Connectez-vous avec votre compte Cayas.' }, 401);
+  const token = request.headers.get('cf-access-jwt-assertion');
+  if (!token || !env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) {
+    return { error: 'Accès réservé. Connectez-vous avec votre compte Cayas.', status: 401 };
   }
   try {
-    const { payload } = await jwtVerify(token, jwks(c.env.ACCESS_TEAM_DOMAIN), {
-      issuer: `https://${c.env.ACCESS_TEAM_DOMAIN}`,
-      audience: c.env.ACCESS_AUD,
+    const { payload } = await jwtVerify(token, jwks(env.ACCESS_TEAM_DOMAIN), {
+      issuer: `https://${env.ACCESS_TEAM_DOMAIN}`,
+      audience: env.ACCESS_AUD,
     });
     const email = String(payload['email'] ?? '').toLowerCase();
-    if (!email.endsWith('@' + domain)) {
-      return c.json({ error: `Accès réservé aux adresses @${domain}.` }, 403);
-    }
-    c.set('email', email);
+    if (!email.endsWith('@' + domain)) return { error: `Accès réservé aux adresses @${domain}.`, status: 403 };
+    return { email };
   } catch {
-    return c.json({ error: 'Session expirée. Rechargez la page.' }, 401);
+    return { error: 'Session expirée. Rechargez la page.', status: 401 };
   }
+}
+
+export const authenticate = createMiddleware<Env>(async (c, next) => {
+  const who = await identify(c.req.raw, c.env);
+  if ('error' in who) return c.json({ error: who.error }, who.status);
+  c.set('email', who.email);
   return next();
 });

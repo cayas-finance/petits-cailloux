@@ -9,7 +9,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.2.4",
     "@hono/zod-validator": "^0.9.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.18",
     "jose": "^6.2.17",
