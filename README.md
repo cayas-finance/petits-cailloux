@@ -2,10 +2,11 @@
 
 Outil interne de Cayas pour la méthode produit **Petit Poucet** : cap trimestriel, cycles de 4 semaines, pitchs et suivi.
 
-Première étape livrée : **trimestres, objectifs et cycles**.
-
-- Un trimestre porte 1 ou 2 objectifs.
-- Il se découpe en 3 cycles de 4 semaines au plus. Un cycle commence un lundi, pendant le trimestre, sans chevaucher un autre cycle.
+- **Roadmap** : le trimestre, ses objectifs, les paris de chaque cycle et ce qui arrive ensuite.
+- **Point hebdo** : notes de suivi des paris, décisions sur les sujets courts, infos à diffuser copiables pour Slack.
+- **Journal** : chaque point hebdo passé, avec ses décisions datées et signées.
+- **Projets** : paris (avec pitch) et sujets courts, filtre des candidats à la betting table.
+- **Trimestres et cycles** : 1 ou 2 objectifs, 3 cycles de 4 semaines au plus. Un cycle commence un lundi, pendant le trimestre, sans chevaucher un autre cycle.
 
 ## Stack
 
@@ -38,18 +39,52 @@ Modifier le schéma : éditer `api/src/db/schema.ts`, puis `npm run db:generate`
 
 Ajouter un composant Zard : `cd web && npx zard-cli@latest add <composant>`. Les composants sont copiés dans `web/src/app/shared/components/` et peuvent être modifiés.
 
-## Mettre en ligne (une fois)
+## Mettre en ligne
 
-1. **Base D1** : `npx wrangler d1 create petits-cailloux`, puis reporter l'identifiant affiché dans `database_id` de `wrangler.jsonc`.
-2. **Stockage des fichiers (R2)** : activer R2 sur le compte (offre gratuite jusqu'à 10 Go), puis `npx wrangler r2 bucket create petits-cailloux-attachments`.
-3. **Migrations** : `npm run db:migrate:remote`.
-4. **Déploiement** : `npm run deploy`. Le Worker est publié sur `petits-cailloux.<compte>.workers.dev` (ou un domaine personnalisé).
-5. **Cloudflare Access** (Zero Trust → Access → Applications) :
-   - ajouter Google Workspace comme fournisseur d'identité ;
-   - créer une application *Self-hosted* sur le domaine du Worker ;
-   - politique *Allow* avec la règle *Emails ending in* `@cayas.fr`.
-6. **Variables du Worker** (Workers → petits-cailloux → Settings → Variables) :
-   - `ACCESS_TEAM_DOMAIN` : le domaine d'équipe, par ex. `cayas.cloudflareaccess.com` ;
-   - `ACCESS_AUD` : l'*Application Audience (AUD) Tag* de l'application Access.
+Tout se fait dans le tableau de bord Cloudflare, sans ligne de commande. Ensuite, chaque merge sur `main` déploie tout seul : build, migrations D1, puis publication du Worker.
 
-Le Worker vérifie la signature du jeton Access à chaque appel et refuse toute adresse hors `@cayas.fr`. Sans ces deux variables, l'API refuse tout.
+### 1. Base de données et stockage (une fois)
+
+1. **D1** (Storage & databases → D1 → Create database) : nom `petits-cailloux`.
+2. **R2** (Storage & databases → R2) : activer R2 (offre gratuite jusqu'à 10 Go), puis créer le bucket `petits-cailloux-attachments`.
+
+Le Worker retrouve la base et le bucket par leur nom : aucun identifiant de compte dans le dépôt.
+
+### 2. Déploiement automatique (une fois)
+
+Workers & Pages → Create → **Import a repository** → `cayas-finance/petits-cailloux`, branche `main` :
+
+| Réglage | Valeur |
+| --- | --- |
+| Nom du projet | `petits-cailloux` (doit être identique au `name` de `wrangler.jsonc`) |
+| Build command | *(vide)* |
+| Deploy command | `npm run deploy` |
+
+`npm run deploy` construit l'interface, applique les migrations D1 en attente, puis publie le Worker sur `petits-cailloux.<compte>.workers.dev`.
+
+Si l'étape des migrations échoue faute de droits, ajouter la permission *D1 : Edit* au jeton de build (Worker → Settings → Builds → API token).
+
+### 3. Accès réservé à Cayas (une fois)
+
+1. Worker → Settings → Domains & Routes → `workers.dev` → **Enable Cloudflare Access**. Cloudflare crée l'application Access et affiche :
+   - le domaine d'équipe, par ex. `cayas.cloudflareaccess.com` ;
+   - l'*Application Audience (AUD) Tag*.
+2. Zero Trust → Access → Applications → l'application créée → politique *Allow* avec la règle **Emails ending in** `@cayas.fr` (à la place de la règle par défaut).
+3. Worker → Settings → Variables and Secrets, ajouter en texte :
+   - `ACCESS_TEAM_DOMAIN` : le domaine d'équipe ;
+   - `ACCESS_AUD` : l'AUD Tag.
+
+`keep_vars` (dans `wrangler.jsonc`) empêche les déploiements suivants d'effacer ces deux variables.
+
+Par défaut, on se connecte avec un code reçu par mail (*One-time PIN*). Pour se connecter avec son compte Google Cayas :
+1. créer un client OAuth dans Google Cloud, avec l'URI de redirection `https://<domaine d'équipe>/cdn-cgi/access/callback` ;
+2. l'ajouter dans Zero Trust → Settings → Authentication → Login methods → **Google Workspace**.
+
+Le Worker vérifie la signature du jeton Access à chaque appel et refuse toute adresse hors `@cayas.fr`. Sans les deux variables, l'API refuse tout.
+
+### Déployer à la main (dépannage)
+
+```bash
+npx wrangler login
+npm run deploy
+```

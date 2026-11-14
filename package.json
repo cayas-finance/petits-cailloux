@@ -15,7 +15,7 @@
     "db:reset:local": "rm -rf .wrangler/state && npm run db:migrate:local",
     "db:migrate:remote": "wrangler d1 migrations apply petits-cailloux --remote",
     "test": "npm test -w api",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && npm run db:migrate:remote && wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.161.0"
