@@ -42,5 +42,10 @@ export const routes: Routes = [
     title: 'Point hebdo · Petits cailloux',
     loadComponent: () => import('./pages/weekly-review.page').then((m) => m.WeeklyReviewPage),
   },
+  {
+    path: 'log',
+    title: 'Journal · Petits cailloux',
+    loadComponent: () => import('./pages/log.page').then((m) => m.LogPage),
+  },
   { path: '**', redirectTo: 'roadmap' },
 ];

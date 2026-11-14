@@ -8,6 +8,8 @@ import {
   describeChange,
   cycleEnd,
   isInline,
+  logDecision,
+  logWeeks,
   nextCycle,
   nextMonday,
   numberCycles,
@@ -178,5 +180,29 @@ describe('week summary', () => {
     });
     expect(summary.bets).toEqual(['Import : Import CSV terminé', 'Export : livré']);
     expect(summary.shortTopics).toEqual(['Logo flou (demandé par Nico) : pris dans le cycle', 'Bouton rose (demandé par Nico) : écarté']);
+  });
+});
+
+describe('decision log', () => {
+  const change = (from: string | null, to: string, fromFormat: string | null = 'bet', toFormat = 'bet') =>
+    ({ fromStatus: from, toStatus: to, fromFormat, toFormat }) as Parameters<typeof logDecision>[0];
+  it('keeps the creation of a bet', () => {
+    expect(logDecision(change(null, 'received', null))).toBe('nouveau projet');
+    expect(logDecision(change(null, 'received', null, 'short'))).toBe('nouveau sujet posé');
+  });
+  it('keeps changes the weekly summary leaves out', () => {
+    expect(logDecision(change('shaping', 'received'))).toBe('remis en reçu');
+    expect(logDecision(change('received', 'received', 'bet', 'short'))).toBe('devient un sujet court');
+    expect(logDecision(change('ready', 'bet'))).toBe('misé sur le cycle');
+  });
+  it('lists the started weeks of the cycles, most recent first', () => {
+    const cycles = [
+      { id: 'a', number: 1, startsOn: '2026-10-05', endsOn: '2026-11-01' },
+      { id: 'b', number: 2, startsOn: '2026-11-02', endsOn: '2026-11-29' },
+      { id: 'c', number: 3, startsOn: '2026-11-30', endsOn: '2026-12-27' },
+    ];
+    const weeks = logWeeks(cycles, '2026-11-10');
+    expect(weeks.map((w) => `${w.cycle}.${w.week}`)).toEqual(['2.2', '2.1', '1.4', '1.3', '1.2', '1.1']);
+    expect(weeks[0].startsOn).toBe('2026-11-09');
   });
 });

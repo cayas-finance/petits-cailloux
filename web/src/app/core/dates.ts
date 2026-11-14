@@ -37,3 +37,9 @@ export function cycleWeek(c: { startsOn: string; endsOn: string }): number | nul
 
 /** "T4 2026": French label of a quarter */
 export const quarterLabel = (q: { year: number; number: number }) => `T${q.number} ${q.year}`;
+
+/** The quarter running today, otherwise the next one, otherwise the last one (quarters sorted by date). */
+export function defaultQuarter<T extends { startsOn: string; endsOn: string }>(quarters: T[]): T | undefined {
+  const t = today();
+  return quarters.find((q) => q.startsOn <= t && t <= q.endsOn) ?? quarters.find((q) => q.startsOn > t) ?? quarters.at(-1);
+}
