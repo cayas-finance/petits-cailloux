@@ -6,6 +6,7 @@ Outil interne de Cayas pour la méthode produit **Petit Poucet** : cap trimestri
 - **Point hebdo** : notes de suivi des paris, décisions sur les sujets courts, infos à diffuser copiables pour Slack.
 - **Journal** : chaque point hebdo passé, avec ses décisions datées et signées.
 - **Projets** : paris (avec pitch) et sujets courts, filtre des candidats à la betting table.
+- **Slack** : transformer un thread (par exemple un bug) en sujet court, depuis le menu du message.
 - **Serveur MCP** : rédiger un pitch avec une IA (Claude, etc.), qui lit les objectifs et les projets et enregistre le pitch.
 - **Trimestres et cycles** : des objectifs (O1, O2…), 3 cycles de 4 semaines au plus. Un cycle commence un lundi, pendant le trimestre, sans chevaucher un autre cycle.
 
@@ -99,6 +100,53 @@ Ces chemins ne donnent rien sans jeton OAuth : le Worker vérifie chaque appel, 
 **Dans Claude** : Paramètres → Connecteurs → *Ajouter un connecteur personnalisé*, URL `https://<adresse de l'outil>/mcp`. Dans Claude Code : `claude mcp add --transport http petits-cailloux https://<adresse de l'outil>/mcp`.
 
 L'IA peut lire les trimestres, les objectifs et les projets, créer un pari et rédiger un pitch. Elle ne peut ni supprimer ni changer un statut. Chaque modification porte l'adresse de la personne qui l'a autorisée.
+
+### 5. Créer un sujet court depuis Slack (une fois)
+
+Sur n'importe quel message d'un thread (par exemple dans #bug), menu **⋯ → Créer un sujet court**. Une fenêtre propose un nom (la première ligne du thread), modifiable. Petits cailloux crée alors le sujet court, statut *reçu* :
+
+- le problème reprend le premier message, le lien vers le thread, puis les réponses avec leur auteur et leur date ;
+- le demandeur est l'auteur du premier message ;
+- la création est faite au nom de la personne qui a utilisé le raccourci (son adresse Slack doit être en `@cayas.fr`).
+
+L'app répond dans le thread avec le lien du sujet court. Un thread déjà transformé renvoie vers le sujet existant.
+
+**Créer l'app** : [api.slack.com/apps](https://api.slack.com/apps) → *Create New App* → *From a manifest*, en remplaçant l'adresse de l'outil :
+
+```yaml
+display_information:
+  name: Petits cailloux
+features:
+  bot_user:
+    display_name: Petits cailloux
+  shortcuts:
+    - name: Créer un sujet court
+      type: message
+      callback_id: create_short_topic
+      description: Transforme ce thread en sujet court dans Petits cailloux
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - chat:write
+      - channels:history
+      - groups:history
+      - users:read
+      - users:read.email
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://<adresse de l'outil>/slack/interactions
+```
+
+Puis :
+
+1. *Install to Workspace*.
+2. Worker → Settings → Variables and Secrets, ajouter en **secret** :
+   - `SLACK_SIGNING_SECRET` : *Basic Information → Signing Secret* ;
+   - `SLACK_BOT_TOKEN` : *OAuth & Permissions → Bot User OAuth Token* (`xoxb-…`).
+3. Ajouter le chemin `slack/interactions` à l'exception Access du MCP (étape 4), ou créer la même exception pour lui seul : Slack ne sait pas passer l'écran d'Access. Le Worker vérifie la signature Slack de chaque appel.
+4. Dans Slack, inviter l'app dans les channels concernés : `/invite @Petits cailloux` dans #bug.
 
 ### Déployer à la main (dépannage)
 
