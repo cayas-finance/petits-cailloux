@@ -14,6 +14,10 @@ export interface Bindings {
   ACCESS_AUD?: string;
   /** Allowed e-mail domain, cayas.fr by default */
   ALLOWED_DOMAIN?: string;
+  /** Slack app « Petits cailloux »: checks requests to /slack/interactions (secret) */
+  SLACK_SIGNING_SECRET?: string;
+  /** Slack app « Petits cailloux »: bot token, to read threads and answer (secret) */
+  SLACK_BOT_TOKEN?: string;
   /** Local development only */
   DEV_EMAIL?: string;
   /**

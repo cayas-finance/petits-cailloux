@@ -17,7 +17,7 @@
   "assets": {
     "directory": "web/dist/web/browser",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/mcp", "/mcp/*", "/authorize", "/token", "/register", "/.well-known/*"]
+    "run_worker_first": ["/api/*", "/mcp", "/mcp/*", "/authorize", "/slack/*", "/token", "/register", "/.well-known/*"]
   },
   "vars": {
     "ALLOWED_DOMAIN": "cayas.fr"
