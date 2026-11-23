@@ -109,6 +109,8 @@ Sur n'importe quel message d'un thread (par exemple dans #bug), menu **⋯ → C
 - le demandeur est l'auteur du premier message ;
 - la création est faite au nom de la personne qui a utilisé le raccourci (son adresse Slack doit être en `@cayas.fr`).
 
+**Plus direct** : réagir avec :rock: sur un message du thread crée le sujet court tout de suite, nommé d'après la première ligne du thread (à corriger ensuite dans l'outil si besoin), au nom de la personne qui a réagi.
+
 L'app répond dans le thread avec le lien du sujet court. Un thread déjà transformé renvoie vers le sujet existant.
 
 **Créer l'app** : [api.slack.com/apps](https://api.slack.com/apps) → *Create New App* → *From a manifest*, en remplaçant l'adresse de l'outil :
@@ -129,6 +131,7 @@ oauth_config:
     bot:
       - commands
       - chat:write
+      - reactions:read
       - channels:history
       - groups:history
       - users:read
@@ -137,6 +140,10 @@ settings:
   interactivity:
     is_enabled: true
     request_url: https://<adresse de l'outil>/slack/interactions
+  event_subscriptions:
+    request_url: https://<adresse de l'outil>/slack/events
+    bot_events:
+      - reaction_added
 ```
 
 Puis :
@@ -145,7 +152,7 @@ Puis :
 2. Worker → Settings → Variables and Secrets, ajouter en **secret** :
    - `SLACK_SIGNING_SECRET` : *Basic Information → Signing Secret* ;
    - `SLACK_BOT_TOKEN` : *OAuth & Permissions → Bot User OAuth Token* (`xoxb-…`).
-3. Ajouter le chemin `slack/interactions` à l'exception Access du MCP (étape 4), ou créer la même exception pour lui seul : Slack ne sait pas passer l'écran d'Access. Le Worker vérifie la signature Slack de chaque appel.
+3. Ajouter les chemins `slack/interactions` et `slack/events` à l'exception Access du MCP (étape 4) : Slack ne sait pas passer l'écran d'Access. Le Worker vérifie la signature Slack de chaque appel. Pour vérifier : `curl -i -X POST https://<adresse de l'outil>/slack/events` doit répondre `401` « Signature Slack invalide. ».
 4. Dans Slack, inviter l'app dans les channels concernés : `/invite @Petits cailloux` dans #bug.
 
 ### Déployer à la main (dépannage)

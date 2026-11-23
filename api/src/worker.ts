@@ -2,7 +2,7 @@ import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
 import api from './index';
 import { mcpHandler } from './mcp';
 import { MCP_SCOPE, authorize } from './oauth';
-import { slackInteractions } from './slack';
+import { slackEvents, slackInteractions } from './slack';
 import type { Bindings } from './env';
 
 /**
@@ -11,7 +11,8 @@ import type { Bindings } from './env';
  * - /api/*: the API, behind Cloudflare Access, used by the interface;
  * - /mcp: the MCP server, behind OAuth, used by AI clients such as Claude;
  * - /authorize: where a user allows an AI client, behind Cloudflare Access;
- * - /slack/interactions: the Slack app's shortcut, outside Access, checked with Slack's signature;
+ * - /slack/interactions, /slack/events: the Slack app's shortcut and :rock: reaction, outside Access,
+ *   checked with Slack's signature;
  * - /token, /register, /.well-known/*: OAuth endpoints, answered by the provider.
  */
 const defaultHandler = {
@@ -19,6 +20,7 @@ const defaultHandler = {
     const path = new URL(request.url).pathname;
     if (path === '/authorize') return authorize(request, env);
     if (path === '/slack/interactions') return slackInteractions(request, env, ctx);
+    if (path === '/slack/events') return slackEvents(request, env, ctx);
     return api.fetch(request, env, ctx);
   },
 };

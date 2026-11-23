@@ -13,6 +13,8 @@ import {
 
 /** callback_id of the message shortcut and of its modal, set in the Slack app (see README) */
 const CALLBACK_ID = 'create_short_topic';
+/** Reaction that turns a thread into a short topic, without the modal */
+export const REACTION = 'rock';
 /** Most messages read from a thread */
 const MAX_MESSAGES = 500;
 
@@ -28,21 +30,10 @@ type Metadata = { channel: string; threadTs: string };
  * The answer (link or error) is posted in the thread or to that user only.
  */
 export async function slackInteractions(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
-  if (request.method !== 'POST') return new Response('Méthode non autorisée.', { status: 405 });
-  if (!env.SLACK_SIGNING_SECRET || !env.SLACK_BOT_TOKEN) return new Response('Slack n’est pas configuré.', { status: 503 });
-
-  const body = await request.text();
-  const valid = await verifySlackSignature(
-    env.SLACK_SIGNING_SECRET,
-    request.headers.get('x-slack-request-timestamp'),
-    request.headers.get('x-slack-signature'),
-    body,
-    Math.floor(Date.now() / 1000),
-  );
-  if (!valid) return new Response('Signature Slack invalide.', { status: 401 });
-
+  const body = await signedBody(request, env);
+  if (body instanceof Response) return body;
   const payload = JSON.parse(new URLSearchParams(body).get('payload') ?? '{}');
-  const slack = slackClient(env.SLACK_BOT_TOKEN);
+  const slack = slackClient(env.SLACK_BOT_TOKEN!);
 
   if (payload.type === 'message_action' && payload.callback_id === CALLBACK_ID) {
     const message: SlackMessage & { thread_ts?: string } = payload.message;
@@ -77,21 +68,58 @@ export async function slackInteractions(request: Request, env: Bindings, ctx: Ex
     if (!name) return Response.json({ response_action: 'errors', errors: { name: 'Le nom est obligatoire.' } });
     const origin = new URL(request.url).origin;
     // Slack waits 3 seconds at most: the modal closes now, the answer comes in the thread.
-    ctx.waitUntil(
-      createShortTopic({ slack, env, ctx, origin, userId: payload.user.id, name, ...metadata }).catch((err) => {
-        console.error(err);
-        return slack('chat.postEphemeral', {
-          channel: metadata.channel,
-          thread_ts: metadata.threadTs,
-          user: payload.user.id,
-          text: 'Le sujet court n’a pas pu être créé : erreur inattendue. Réessayez dans un instant.',
-        }).catch(() => {});
-      }),
-    );
+    ctx.waitUntil(createShortTopic({ slack, env, ctx, origin, userId: payload.user.id, name, ...metadata }));
     return new Response(null, { status: 200 });
   }
 
   return new Response(null, { status: 200 });
+}
+
+/**
+ * Slack events (/slack/events), outside Cloudflare Access, checked like the interactions.
+ * A :rock: reaction on any message of a thread creates the short topic right away, named
+ * after the thread's first line, in the name of the person who reacted.
+ */
+export async function slackEvents(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
+  const body = await signedBody(request, env);
+  if (body instanceof Response) return body;
+  const payload = JSON.parse(body);
+
+  // Slack checks the URL once, when it is set in the app.
+  if (payload.type === 'url_verification') return Response.json({ challenge: payload.challenge });
+
+  // Slack sends an event again when the first answer was late: it is already being handled.
+  if (request.headers.get('x-slack-retry-num')) return new Response(null, { status: 200 });
+
+  const event = payload.event;
+  if (payload.type === 'event_callback' && event?.type === 'reaction_added' && event.reaction === REACTION && event.item?.type === 'message') {
+    const slack = slackClient(env.SLACK_BOT_TOKEN!);
+    const origin = new URL(request.url).origin;
+    ctx.waitUntil(
+      (async () => {
+        // The reaction may be on a reply: the thread is the one of its first message.
+        const r = await slack('conversations.replies', { channel: event.item.channel, ts: event.item.ts, limit: 1 });
+        const threadTs: string = r.messages?.[0]?.thread_ts ?? event.item.ts;
+        await createShortTopic({ slack, env, ctx, origin, userId: event.user, channel: event.item.channel, threadTs });
+      })().catch((err) => console.error(err)),
+    );
+  }
+  return new Response(null, { status: 200 });
+}
+
+/** The body of a request signed by the Slack app, or the response refusing it */
+async function signedBody(request: Request, env: Bindings): Promise<string | Response> {
+  if (request.method !== 'POST') return new Response('Méthode non autorisée.', { status: 405 });
+  if (!env.SLACK_SIGNING_SECRET || !env.SLACK_BOT_TOKEN) return new Response('Slack n’est pas configuré.', { status: 503 });
+  const body = await request.text();
+  const valid = await verifySlackSignature(
+    env.SLACK_SIGNING_SECRET,
+    request.headers.get('x-slack-request-timestamp'),
+    request.headers.get('x-slack-signature'),
+    body,
+    Math.floor(Date.now() / 1000),
+  );
+  return valid ? body : new Response('Signature Slack invalide.', { status: 401 });
 }
 
 function modal(name: string, metadata: Metadata) {
@@ -122,13 +150,31 @@ function modal(name: string, metadata: Metadata) {
   };
 }
 
-async function createShortTopic(o: {
+/** Creates the short topic of a thread; any failure is told to the person, in the thread. */
+async function createShortTopic(o: Parameters<typeof tryCreateShortTopic>[0]) {
+  try {
+    await tryCreateShortTopic(o);
+  } catch (err) {
+    console.error(err);
+    await o
+      .slack('chat.postEphemeral', {
+        channel: o.channel,
+        thread_ts: o.threadTs,
+        user: o.userId,
+        text: 'Le sujet court n’a pas pu être créé : erreur inattendue. Réessayez dans un instant.',
+      })
+      .catch(() => {});
+  }
+}
+
+async function tryCreateShortTopic(o: {
   slack: Slack;
   env: Bindings;
   ctx: ExecutionContext;
   origin: string;
   userId: string;
-  name: string;
+  /** Chosen in the modal; the thread's first line otherwise */
+  name?: string;
   channel: string;
   threadTs: string;
 }) {
@@ -168,7 +214,7 @@ async function createShortTopic(o: {
   if (pitch.length > MAX_PITCH_LENGTH) pitch = pitch.slice(0, MAX_PITCH_LENGTH - 100) + `\n\n… [suite dans Slack](${permalink})\n`;
 
   const res = await call('POST', '/projects', {
-    name: o.name,
+    name: o.name || suggestedTitle(messages[0]?.text ?? '', names),
     format: 'short',
     requester: messages[0] ? authorName(messages[0], names) : names[userId] ?? email,
     status: 'received',
